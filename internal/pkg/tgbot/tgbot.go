@@ -119,7 +119,6 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			return
 		}
 
-		b.opts.Reset(b.cfg.DefaultPollingInterval)
 		err := b.listingsService.Reset(ctx)
 		if err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to reset upon /stop command")
@@ -127,6 +126,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
+		b.opts.Reset(b.cfg.DefaultPollingInterval)
 
 		msgTxt := "✅You have stopped the bot, all your data and settings were removed"
 		b.sendMessage(chatID, user.UserName, msgTxt)
