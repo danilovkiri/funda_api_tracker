@@ -5,6 +5,7 @@ import (
 	"fundaNotifier/internal/integration"
 	"fundaNotifier/internal/pkg/logger"
 	"fundaNotifier/internal/pkg/tgbot"
+
 	"github.com/ilyakaznacheev/cleanenv"
 )
 

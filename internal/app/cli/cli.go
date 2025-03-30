@@ -6,8 +6,9 @@ import (
 	"fundaNotifier/internal/app"
 	"fundaNotifier/internal/app/cli/commands/listings"
 	"fundaNotifier/internal/app/cli/commands/storage"
-	urfave "github.com/urfave/cli/v2"
 	"os"
+
+	urfave "github.com/urfave/cli/v2"
 )
 
 type Cli struct {

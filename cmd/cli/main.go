@@ -6,8 +6,9 @@ import (
 	"fundaNotifier/internal/app/cli"
 	"fundaNotifier/internal/pkg/config"
 	"fundaNotifier/internal/pkg/logger"
-	"github.com/joho/godotenv"
 	"sync"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {

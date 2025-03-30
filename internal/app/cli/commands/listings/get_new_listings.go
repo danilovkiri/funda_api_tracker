@@ -3,6 +3,7 @@ package listings
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v2"
 )

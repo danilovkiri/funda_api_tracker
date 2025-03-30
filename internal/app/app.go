@@ -7,8 +7,9 @@ import (
 	"fundaNotifier/internal/infrastructure/repository/mysql"
 	"fundaNotifier/internal/integration"
 	"fundaNotifier/internal/pkg/config"
-	"github.com/rs/zerolog"
 	"sync"
+
+	"github.com/rs/zerolog"
 )
 
 type Domain struct {

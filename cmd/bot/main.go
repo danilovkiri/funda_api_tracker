@@ -6,11 +6,12 @@ import (
 	"fundaNotifier/internal/app/bot"
 	"fundaNotifier/internal/pkg/config"
 	"fundaNotifier/internal/pkg/logger"
-	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {

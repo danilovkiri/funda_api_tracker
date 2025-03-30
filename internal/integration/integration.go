@@ -2,6 +2,7 @@ package integration
 
 import (
 	"fundaNotifier/internal/integration/funda_api"
+
 	"github.com/rs/zerolog"
 )
 

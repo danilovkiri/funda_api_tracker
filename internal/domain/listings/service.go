@@ -8,12 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"fundaNotifier/internal/domain"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 type Service struct {

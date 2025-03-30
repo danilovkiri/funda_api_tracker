@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"fundaNotifier/internal/domain"
-	"fundaNotifier/migrations"
+	tsdbmigrations "fundaNotifier/migrations"
+	"sync"
+	"time"
+
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
 	"github.com/rs/zerolog"
-	"sync"
-	"time"
 )
 
 type Repository struct {

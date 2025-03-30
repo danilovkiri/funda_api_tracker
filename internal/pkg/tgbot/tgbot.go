@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"fundaNotifier/internal/domain/listings"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/rs/zerolog"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/rs/zerolog"
 )
 
 type ListingsService interface {

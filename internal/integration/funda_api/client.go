@@ -3,9 +3,10 @@ package funda_api
 import (
 	"context"
 	"fmt"
+	"net/http"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog"
-	"net/http"
 )
 
 const (
