@@ -2,9 +2,7 @@
 -- +goose StatementBegin
 SELECT 'up SQL query';
 
-CREATE SCHEMA listings;
-
-CREATE TABLE listings.listings
+CREATE TABLE listings
 (
     name                TEXT            NOT NULL,
     url                 TEXT            NOT NULL,
@@ -14,22 +12,23 @@ CREATE TABLE listings.listings
     address_region      TEXT            NOT NULL,
     currency            TEXT            NOT NULL,
     price               NUMERIC         NOT NULL,
-    last_seen		    TIMESTAMPTZ     NOT NULL
+    last_seen		    DATETIME        NOT NULL
 );
 
-CREATE TABLE listings.search_query
+CREATE TABLE search_query
 (
     search_query        TEXT            NOT NULL,
-    updated_at		    TIMESTAMPTZ     NOT NULL
+    updated_at		    DATETIME        NOT NULL
 );
 
 
-CREATE UNIQUE INDEX ON listings.listings (url);
+CREATE UNIQUE INDEX listings_url_unique_idx ON listings(url);
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
 SELECT 'down SQL query';
 
-DROP SCHEMA listings CASCADE;
+DROP TABLE listings;
+DROP TABLE search_query;
 -- +goose StatementEnd

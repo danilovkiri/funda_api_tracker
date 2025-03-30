@@ -1,4 +1,3 @@
-// Package pg реализует функционал взаимодействия с PGSQL.
 package mysql
 
 import (
@@ -59,7 +58,7 @@ func NewRepository(
 
 func (r *Repository) Migrate(ctx context.Context, direction string) error {
 	goose.SetBaseFS(tsdbmigrations.EmbedMigrations)
-	if err := goose.SetDialect("pgx"); err != nil {
+	if err := goose.SetDialect("sqlite3"); err != nil {
 		r.log.Error().Err(err).Msg("failed to set dialect")
 		return fmt.Errorf("failed to set dialect: %w", err)
 	}
@@ -92,8 +91,6 @@ func (r *Repository) Ping(ctx context.Context) error {
 }
 
 func (r *Repository) Begin(ctx context.Context) (domain.Tx, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		r.log.Error().Err(err).Msg("failed to begin transaction")

@@ -10,9 +10,10 @@ import (
 	"fundaNotifier/internal/domain"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 	"net/url"
 	"strconv"
-	"strings"
+	"time"
 )
 
 type Service struct {
@@ -124,18 +125,20 @@ func (s *Service) GetNewListings(ctx context.Context) (Listings, error) {
 	}
 
 	var (
-		pageNumber   = defaultStartPageNumber
-		htmlContent  []byte
-		doc          *goquery.Document
-		endOfSearch  bool
-		listingItems = make([]ListingItem, 0, defaultCapacity)
-		queryParams  = parsedURL.Query()
+		pageNumber     = defaultStartPageNumber
+		htmlContent    []byte
+		doc            *goquery.Document
+		emptyPageFound bool
+		listingItems   = make([]ListingItem, 0, defaultCapacity)
+		queryParams    = parsedURL.Query()
 	)
 
 	for {
 		// set pagination and retrieve HTML content
 		queryParams.Set("search_result", strconv.Itoa(pageNumber))
 		parsedURL.RawQuery = queryParams.Encode()
+		s.log.Debug().Str("url", parsedURL.String()).Int("page", pageNumber).Msg("fetching new listings for")
+
 		htmlContent, err = s.fundaAPIClient.GetHTMLContent(ctx, parsedURL.String())
 		if err != nil {
 			s.log.Error().Err(err).Msg("failed to load HTML content while getting listing items")
@@ -150,18 +153,8 @@ func (s *Service) GetNewListings(ctx context.Context) (Listings, error) {
 			return nil, fmt.Errorf("failed to parse HTML content while getting listing items: %w", err)
 		}
 
-		// trigger end-of-search by full-text search, since PAI does not provide 404 for such cases
-		doc.Find("body *").Each(func(i int, selection *goquery.Selection) {
-			text := strings.TrimSpace(selection.Text())
-			if strings.Contains(text, pageNotFoundText) {
-				endOfSearch = true
-			}
-		})
-		if endOfSearch {
-			break
-		}
-
 		// find json object with results
+		emptyPageFound = true
 		doc.Find(`script[type="application/ld+json"][data-hid="result-list-metadata"]`).Each(func(i int, selection *goquery.Selection) {
 			jsonText := selection.Text()
 			var listingSearchList ListingSearchList
@@ -171,28 +164,51 @@ func (s *Service) GetNewListings(ctx context.Context) (Listings, error) {
 				return
 			}
 			listingItems = append(listingItems, listingSearchList.ItemListElement...)
+			emptyPageFound = false
 		})
+
+		// break the cycle if no listing items were found previously
+		if emptyPageFound {
+			s.log.Warn().Str("url", parsedURL.String()).Int("page", pageNumber).Msg("stopping pagination iteration")
+			break
+		}
 
 		// increment pagination
 		pageNumber++
 	}
 
-	listings := make(Listings, 0, len(listingItems))
+	// retrieve detailed listing data in parallel
+	resultsCh := make(chan *Listing, len(listingItems)) // buffer to prevent blocking
+	g, ctx := errgroup.WithContext(ctx)
 	for idx := range listingItems {
-		var listing *Listing
-		listing, err = s.GetListing(ctx, listingItems[idx].URL)
-		if err != nil {
-			s.log.Error().Err(err).Msg("failed to get listing while retrieving detailed data")
-			continue
-		}
-		listings = append(listings, *listing)
+		g.Go(func() error {
+			listing, gErr := s.GetListing(ctx, listingItems[idx].URL)
+			if gErr != nil {
+				s.log.Error().Err(gErr).Msg("failed to get listing while retrieving detailed data")
+				return gErr
+			}
+			listing.LastSeen = time.Now()
+			resultsCh <- listing
+			return nil
+		})
+	}
+
+	if err = g.Wait(); err != nil {
+		s.log.Error().Err(err).Msg("failed to fetch new listings in parallel")
+		return nil, fmt.Errorf("failed to fetch new listings in parallel: %w", err)
+	}
+	close(resultsCh)
+
+	listings := make(Listings, 0, len(listingItems))
+	for l := range resultsCh {
+		listings = append(listings, *l)
 	}
 
 	return listings, nil
 }
 
 func (s *Service) GetListing(ctx context.Context, URL string) (*Listing, error) {
-	s.log.Debug().Msg("running listings.GetListing")
+	s.log.Debug().Str("url", URL).Msg("running listings.GetListing")
 
 	var (
 		err         error
@@ -226,4 +242,16 @@ func (s *Service) GetListing(ctx context.Context, URL string) (*Listing, error) 
 	})
 
 	return &listing, nil
+}
+
+func (s *Service) GetSearchQuery(ctx context.Context) (URL string, err error) {
+	s.log.Debug().Str("url", URL).Msg("running listings.GetSearchQuery")
+
+	URL, err = s.repository.GetCurrentSearchQuery(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get current search query")
+		return URL, fmt.Errorf("failed to get current search query: %w", err)
+	}
+
+	return URL, nil
 }

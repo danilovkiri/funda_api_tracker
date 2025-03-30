@@ -2,7 +2,6 @@ package infrastructure
 
 import (
 	"context"
-	"fmt"
 	"fundaNotifier/internal/infrastructure/repository/mysql"
 	"sync"
 
@@ -11,7 +10,7 @@ import (
 
 type Infrastructure struct {
 	cfg       *Config
-	mysqlRepo *mysql.Repository
+	MySqlRepo *mysql.Repository
 	wg        *sync.WaitGroup
 	log       *zerolog.Logger
 }
@@ -19,22 +18,17 @@ type Infrastructure struct {
 func NewInfrastructure(ctx context.Context, cfg *Config, wg *sync.WaitGroup, log *zerolog.Logger) (*Infrastructure, error) {
 	infrastructure := &Infrastructure{
 		cfg:       cfg,
-		mysqlRepo: nil,
+		MySqlRepo: nil,
 		wg:        wg,
 		log:       log,
 	}
-
-	if err := infrastructure.mySQLInit(ctx); err != nil {
-		log.Error().Err(err).Msg("failed to initialize MySQL DB")
-		return nil, fmt.Errorf("failed to initialize MySQL DB: %w", err)
-	}
+	infrastructure.mySQLInit(ctx)
 	return infrastructure, nil
 }
 
-func (i *Infrastructure) mySQLInit(ctx context.Context) error {
+func (i *Infrastructure) mySQLInit(ctx context.Context) {
 	cfg := mysql.Config{
 		DNS: i.cfg.MySQLConfig.DNS,
 	}
-	i.mysqlRepo = mysql.NewRepository(ctx, i.wg, &cfg, i.log)
-	return i.mysqlRepo.Migrate(ctx, mysql.MigrateUp)
+	i.MySqlRepo = mysql.NewRepository(ctx, i.wg, &cfg, i.log)
 }
