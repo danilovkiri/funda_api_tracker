@@ -22,7 +22,7 @@ func New(app *app.App) *Bot {
 }
 
 func (b *Bot) Run(ctx context.Context) error {
-	if err := b.bot.Begin(ctx); err != nil {
+	if err := b.bot.Begin(ctx, b.App.Wg); err != nil {
 		b.App.Log.Error().Err(err).Msg("failed to run bot application")
 		return fmt.Errorf("failed to run bot application: %w", err)
 	}

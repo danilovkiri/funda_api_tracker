@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"fundaNotifier/internal/domain"
-	tsdbmigrations "fundaNotifier/migrations"
+	"fundaNotifier/migrations"
 	"sync"
 	"time"
 
@@ -58,7 +58,7 @@ func NewRepository(
 }
 
 func (r *Repository) Migrate(ctx context.Context, direction string) error {
-	goose.SetBaseFS(tsdbmigrations.EmbedMigrations)
+	goose.SetBaseFS(migrations.EmbedMigrations)
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		r.log.Error().Err(err).Msg("failed to set dialect")
 		return fmt.Errorf("failed to set dialect: %w", err)

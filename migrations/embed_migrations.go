@@ -1,4 +1,4 @@
-package tsdbmigrations
+package migrations
 
 import "embed"
 
