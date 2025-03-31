@@ -23,9 +23,9 @@ clean:
 # Run the bot app
 .PHONY: bot
 run-bot: $(BIN1)
-	./$(BIN1)
+	$(BIN1)
 
 # Migrate the DB to latest version
 .PHONY: migrate-up
 migrate-up: $(BIN2)
-	./$(BIN2) storage:migrate --direction=up
+	$(BIN2) storage:migrate --direction=up
