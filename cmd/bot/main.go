@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load("./.env")
+	_ = godotenv.Load("./.env", "./.env.local")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}

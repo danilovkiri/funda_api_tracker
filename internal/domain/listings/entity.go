@@ -1,6 +1,9 @@
 package listings
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 type Listing struct {
 	Context     any       `json:"@context"`
@@ -60,6 +63,42 @@ func (l *Listings) CompareAndGetRemovedListings(newListings Listings) Listings {
 		}
 	}
 	return removedListings
+}
+
+func (l *Listings) FilterByRegionsAndCities(regions, cities []string) Listings {
+	if l == nil || len(*l) == 0 {
+		return nil
+	}
+	filteredListings := make(Listings, 0, len(*l))
+
+	for idx := range *l {
+		if len(regions) == 0 && len(cities) == 0 {
+			filteredListings = append(filteredListings, (*l)[idx])
+			continue
+		}
+
+		if len(regions) != 0 && len(cities) == 0 {
+			if slices.Contains(regions, (*l)[idx].Address.AddressRegion) {
+				filteredListings = append(filteredListings, (*l)[idx])
+				continue
+			}
+		}
+
+		if len(regions) == 0 && len(cities) != 0 {
+			if slices.Contains(cities, (*l)[idx].Address.AddressLocality) {
+				filteredListings = append(filteredListings, (*l)[idx])
+				continue
+			}
+		}
+
+		if len(regions) != 0 && len(cities) != 0 {
+			if slices.Contains(regions, (*l)[idx].Address.AddressRegion) || slices.Contains(cities, (*l)[idx].Address.AddressLocality) {
+				filteredListings = append(filteredListings, (*l)[idx])
+				continue
+			}
+		}
+	}
+	return filteredListings
 }
 
 func (l *Listings) CompareAndGetAddedListings(currentListings Listings) Listings {

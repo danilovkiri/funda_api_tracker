@@ -17,8 +17,6 @@ type ListingsService interface {
 	Reset(ctx context.Context) error
 	ResetAndUpdate(ctx context.Context, URL string) error
 	UpdateAndCompareListings(ctx context.Context) (addedListings, removedListings listings.Listings, err error)
-	GetNewListings(ctx context.Context) (listings.Listings, error)
-	GetListing(ctx context.Context, URL string) (*listings.Listing, error)
 	GetSearchQuery(ctx context.Context) (URL string, err error)
 }
 
@@ -245,15 +243,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			return
 		}
 
-		addedListings, removedListings, err := b.listingsService.UpdateAndCompareListings(ctx)
-		if err != nil {
-			b.log.Error().Err(err).Msg("failed to run in-bot ticker handler")
-			msgTxt := "💥 failed to get listings updates"
-			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
-			return
-		}
-		msgTxt := fmt.Sprintf("📅Updated at %s\n➕Added listings count: %d\n➖Removed listings count: %d", time.Now().Format(time.RFC3339), len(addedListings), len(removedListings))
-		b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
+		b.getAndFilterUpdates(ctx, true)
 
 	case "help":
 		commands, err := b.bot.GetMyCommands()
@@ -352,15 +342,7 @@ func (b *TelegramBot) dynamicTicker(ctx context.Context, intervalChan <-chan tim
 			if !b.isActive {
 				continue
 			}
-			addedListings, removedListings, err := b.listingsService.UpdateAndCompareListings(ctx)
-			if err != nil {
-				b.log.Error().Err(err).Msg("failed to run in-bot ticker handler")
-				msgTxt := "💥 failed to get listings updates"
-				b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
-				continue
-			}
-			msgTxt := fmt.Sprintf("📅Updated at %s\n➕Added listings count: %d\n➖Removed listings count: %d", time.Now().Format(time.RFC3339), len(addedListings), len(removedListings))
-			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
+			b.getAndFilterUpdates(ctx, false)
 		case newInterval := <-intervalChan:
 			b.log.Info().Dur("new_interval", newInterval).Msg("changing in-bot ticker interval to ")
 			ticker.Stop()
@@ -369,5 +351,21 @@ func (b *TelegramBot) dynamicTicker(ctx context.Context, intervalChan <-chan tim
 			b.log.Info().Msg("shutting down in-bot ticker")
 			return
 		}
+	}
+}
+
+func (b *TelegramBot) getAndFilterUpdates(ctx context.Context, force bool) {
+	addedListings, removedListings, err := b.listingsService.UpdateAndCompareListings(ctx)
+	if err != nil {
+		b.log.Error().Err(err).Msg("failed to get and compare listings updates")
+		msgTxt := "💥 failed to get listings updates"
+		b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
+		return
+	}
+	filteredAddedListings := addedListings.FilterByRegionsAndCities(b.opts.Regions, b.opts.Cities)
+	filteredRemovedListings := removedListings.FilterByRegionsAndCities(b.opts.Regions, b.opts.Cities)
+	if len(filteredAddedListings) != 0 || force {
+		msgTxt := fmt.Sprintf("📅Updated at %s\n➕Added listings count: %d\n➖Removed listings count: %d", time.Now().Format(time.RFC3339), len(filteredAddedListings), len(filteredRemovedListings))
+		b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 	}
 }
