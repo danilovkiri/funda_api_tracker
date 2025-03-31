@@ -120,17 +120,25 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		err := b.listingsService.Reset(ctx)
 		if err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to reset upon /stop command")
-			msgTxt := "💥 failed to reset database"
+			msgTxt := "💥failed to reset database"
 			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
 		b.opts.Reset(b.cfg.DefaultPollingInterval)
+		b.isActive = false
 
 		msgTxt := "⏹️You have stopped the bot, all your data and settings were removed"
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "run":
 		if !b.isCurrentUser(user.UserName, chatID) {
+			return
+		}
+
+		if !b.readyToRun(ctx) {
+			b.log.Warn().Str("userID", user.UserName).Int64("chatID", chatID).Msg("unable to /run with no settings applied")
+			msgTxt := "💥unable to run, search query required (set it with /set_search_query followed by URL)"
+			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
 
@@ -157,7 +165,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		err := b.listingsService.Reset(ctx)
 		if err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to reset upon /reset command")
-			msgTxt := "💥 failed to reset database"
+			msgTxt := "💥failed to reset database"
 			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
@@ -206,7 +214,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		searchQuery := update.Message.CommandArguments()
 		if err := b.listingsService.ResetAndUpdate(ctx, searchQuery); err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to reset upon /reset command")
-			msgTxt := "💥 failed to reset the database and set a new search query"
+			msgTxt := "💥failed to reset the database and set a new search query"
 			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
@@ -230,7 +238,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		searchQuery, err := b.listingsService.GetSearchQuery(ctx)
 		if err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get current search query")
-			msgTxt := "💥 failed to get current search query, have you set it?"
+			msgTxt := "💥failed to get current search query, have you set it?"
 			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
@@ -240,6 +248,13 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 
 	case "update_now":
 		if !b.isCurrentUser(user.UserName, chatID) {
+			return
+		}
+
+		if !b.readyToRun(ctx) {
+			b.log.Warn().Str("userID", user.UserName).Int64("chatID", chatID).Msg("unable to /update_now with no settings applied")
+			msgTxt := "💥unable to run update, search query required (set it with /set_search_query followed by URL)"
+			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
 
@@ -358,7 +373,7 @@ func (b *TelegramBot) getAndFilterUpdates(ctx context.Context, force bool) {
 	addedListings, removedListings, err := b.listingsService.UpdateAndCompareListings(ctx)
 	if err != nil {
 		b.log.Error().Err(err).Msg("failed to get and compare listings updates")
-		msgTxt := "💥 failed to get listings updates"
+		msgTxt := "💥failed to get listings updates"
 		b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 		return
 	}
@@ -368,4 +383,12 @@ func (b *TelegramBot) getAndFilterUpdates(ctx context.Context, force bool) {
 		msgTxt := fmt.Sprintf("📅Updated at %s\n➕Added listings count: %d\n➖Removed listings count: %d", time.Now().Format(time.RFC3339), len(filteredAddedListings), len(filteredRemovedListings))
 		b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 	}
+}
+
+func (b *TelegramBot) readyToRun(ctx context.Context) bool {
+	_, err := b.listingsService.GetSearchQuery(ctx)
+	if err != nil {
+		return false
+	}
+	return true
 }
