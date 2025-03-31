@@ -169,6 +169,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 			return
 		}
+		b.isActive = false
 
 		msgTxt := "✅All your data was removed from database, next sync will be run as scheduled"
 		b.sendMessage(chatID, user.UserName, msgTxt)
@@ -344,7 +345,10 @@ func (b *TelegramBot) showRegionsAndCities() string {
 }
 
 func (b *TelegramBot) showPollingInterval() string {
-	return "⏳Active polling interval: " + b.opts.PollingInterval.String()
+	if b.isActive {
+		return "⏳Active polling interval: " + b.opts.PollingInterval.String()
+	}
+	return "⏳Active polling interval: NA (polling is inactive)"
 }
 
 func (b *TelegramBot) dynamicTicker(ctx context.Context, intervalChan <-chan time.Duration) {
