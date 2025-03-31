@@ -12,8 +12,8 @@ all: build
 # Build both binaries
 .PHONY: build
 build:
-	go build -o $(BIN1) $(SRC1)
-	go build -o $(BIN2) $(SRC2)
+	CGO_ENABLED=1 go build -o $(BIN1) $(SRC1)
+	CGO_ENABLED=1 go build -o $(BIN2) $(SRC2)
 
 # Clean built binaries
 .PHONY: clean
