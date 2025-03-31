@@ -126,7 +126,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		}
 		b.opts.Reset(b.cfg.DefaultPollingInterval)
 
-		msgTxt := "✅You have stopped the bot, all your data and settings were removed"
+		msgTxt := "⏹️You have stopped the bot, all your data and settings were removed"
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "run":
@@ -136,7 +136,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 
 		b.isActive = true
 
-		msgTxt := "✅You have started the polling, from now on you will receive notifications once per polling interval (if updates are found)"
+		msgTxt := "▶️You have started the polling, from now on you will receive notifications once per polling interval (if updates are found)"
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "pause":
@@ -144,9 +144,9 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			return
 		}
 
-		b.isActive = true
+		b.isActive = false
 
-		msgTxt := "✅You have paused the polling, from now on you will not receive notifications"
+		msgTxt := "⏸️You have paused the polling, from now on you will not receive notifications"
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "reset":
@@ -325,7 +325,7 @@ func (b *TelegramBot) setPollingInterval(pollingIntervalSeconds int) string {
 
 func (b *TelegramBot) showRegionsAndCities() string {
 	return "🌍Active regions: " + strings.Join(b.opts.Regions, ", ") +
-		"\n🌎Active cities: " + strings.Join(b.opts.Cities, ", ")
+		"\n📍Active cities: " + strings.Join(b.opts.Cities, ", ")
 }
 
 func (b *TelegramBot) showPollingInterval() string {
