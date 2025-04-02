@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"fundaNotifier/internal/app"
-	"fundaNotifier/internal/app/cli/commands/listings"
 	"fundaNotifier/internal/app/cli/commands/storage"
 	"os"
 
@@ -18,20 +17,8 @@ type Cli struct {
 
 func New(app *app.App) *Cli {
 	commandMigrate := storage.NewMigrateCommand(app.Log, app.Infra.MySqlRepo)
-	commandReset := listings.NewResetCommand(app.Log, app.Domain.Listings)
-	commandResetAndUpdate := listings.NewResetAndUpdateCommand(app.Log, app.Domain.Listings)
-	commandUpdateAndCompare := listings.NewUpdateAndCompareCommand(app.Log, app.Domain.Listings)
-	commandGetListing := listings.NewGetListingCommand(app.Log, app.Domain.Listings)
-	commandGetNewListings := listings.NewGetNewListingsCommand(app.Log, app.Domain.Listings)
-	commandgetSearchQuery := listings.NewGetSearchQueryCommand(app.Log, app.Domain.Listings)
 	commands := []*urfave.Command{
 		commandMigrate.Describe(),
-		commandReset.Describe(),
-		commandResetAndUpdate.Describe(),
-		commandUpdateAndCompare.Describe(),
-		commandGetListing.Describe(),
-		commandGetNewListings.Describe(),
-		commandgetSearchQuery.Describe(),
 	}
 
 	cliApp := &urfave.App{

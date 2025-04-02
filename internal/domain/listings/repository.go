@@ -7,10 +7,9 @@ import (
 
 type Repository interface {
 	Begin(ctx context.Context) (domain.Tx, error)
-	TruncateSearchQueryTable(ctx context.Context, tx domain.Tx) error
-	TruncateListingsTable(ctx context.Context, tx domain.Tx) error
-	CreateSearchQuery(ctx context.Context, URL string) error
-	GetAllCurrentListings(ctx context.Context) (Listings, error)
-	GetCurrentSearchQuery(ctx context.Context) (string, error)
-	MUpdateListings(ctx context.Context, listings Listings) error
+	DeleteListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error
+	GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (Listings, error)
+	GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (Listings, error)
+	UpsertListingsTx(ctx context.Context, tx domain.Tx, listings Listings) error
+	DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error
 }

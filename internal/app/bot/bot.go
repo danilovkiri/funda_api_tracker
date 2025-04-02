@@ -13,7 +13,7 @@ type Bot struct {
 }
 
 func New(app *app.App) *Bot {
-	bot := tgbot.NewTelegramBot(&app.Config.TelegramBot, app.Log, app.Domain.Listings)
+	bot := tgbot.NewTelegramBot(&app.Config.TelegramBot, app.Log, app.Domain.Listings, app.Domain.Sessions, app.Domain.SearchQueries)
 	botInstance := &Bot{
 		App: app,
 		bot: bot,

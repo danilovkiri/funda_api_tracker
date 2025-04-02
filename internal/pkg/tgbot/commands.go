@@ -13,9 +13,10 @@ func defineCommands() tgbotapi.SetMyCommandsConfig {
 		{Command: "set_regions", Description: "Set regions (comma-separated)"},
 		{Command: "set_cities", Description: "Set cities (comma-separated)"},
 		{Command: "show_active_filters", Description: "Show currently active regions and cities"},
-		{Command: "show_search_query", Description: "Show currently active search query"},
+		{Command: "show_polling_interval", Description: "Show currently set polling interval (in seconds)"},
 		{Command: "update_now", Description: "Trigger manual update"},
-		{Command: "reset", Description: "Remove everything from database"},
+		{Command: "show_current_listings", Description: "Show all currently stored listings"},
+		{Command: "show_new_listings", Description: "Show all newly added listings"},
 		{Command: "help", Description: "Show help info"},
 	}
 	return tgbotapi.NewSetMyCommands(commands...)

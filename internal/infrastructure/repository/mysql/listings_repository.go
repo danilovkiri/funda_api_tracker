@@ -23,12 +23,12 @@ func NewListingsRepository(repository *Repository) *ListingsRepository {
 	}
 }
 
-func (r *ListingsRepository) TruncateSearchQueryTable(ctx context.Context, tx domain.Tx) error {
-	const name = "ListingsRepository.TruncateSearchQueryTable"
+func (r *ListingsRepository) DeleteListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error {
+	const name = "ListingsRepository.DeleteListingsByUserIDTx"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
-	_, err := tx.ExecContext(ctx, "DELETE FROM search_query;")
+	_, err := tx.ExecContext(ctx, "DELETE FROM listings WHERE user_id = ?;", userID)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -37,41 +37,43 @@ func (r *ListingsRepository) TruncateSearchQueryTable(ctx context.Context, tx do
 	return nil
 }
 
-func (r *ListingsRepository) TruncateListingsTable(ctx context.Context, tx domain.Tx) error {
-	const name = "ListingsRepository.TruncateListingsTable"
+func (r *ListingsRepository) DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error {
+	const name = "ListingsRepository.DeleteListingsByUserIDAndURLs"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
-	_, err := tx.ExecContext(ctx, "DELETE FROM listings;")
+	stmt, err := tx.PrepareContext(ctx, "DELETE FROM listings WHERE user_id = ? AND url = ?;")
 	if err != nil {
-		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
-		return fmt.Errorf("failed to execute query in %s: %w", name, err)
+		r.log.Error().Err(err).Str("method", name).Msg("failed to prepare statement in")
+		return fmt.Errorf("failed to prepare statement in %s: %w", name, err)
+	}
+	defer stmt.Close()
+
+	for idx := range URLs {
+		_, err = stmt.ExecContext(ctx, userID, URLs[idx])
+		if err != nil {
+			r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
+			return fmt.Errorf("failed to execute query in %s: %w", name, err)
+		}
 	}
 
 	return nil
 }
 
-func (r *ListingsRepository) CreateSearchQuery(ctx context.Context, URL string) error {
-	const name = "ListingsRepository.CreateSearchQuery"
+func (r *ListingsRepository) GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (listings.Listings, error) {
+	const name = "ListingsRepository.GetListingsByUserID"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
-	_, err := r.db.ExecContext(ctx, "INSERT INTO search_query (search_query, updated_at) VALUES (?, ?)", URL, time.Now())
-	if err != nil {
-		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
-		return fmt.Errorf("failed to execute query in %s: %w", name, err)
+	var query string
+	if showOnlyNew {
+		query = "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new FROM listings WHERE user_id = ? AND is_new IS TRUE;"
+	} else {
+		query = "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new FROM listings WHERE user_id = ?;"
 	}
-
-	return nil
-}
-
-func (r *ListingsRepository) GetAllCurrentListings(ctx context.Context) (listings.Listings, error) {
-	const name = "ListingsRepository.GetAllCurrentListings"
-	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
-	defer cancel()
 
 	result := make(listings.Listings, 0, defaultCapacity)
-	rows, err := r.db.QueryContext(ctx, "SELECT name, url, description, address_street, address_locality, address_region, currency, price, last_seen FROM listings;")
+	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			r.log.Warn().Err(err).Str("method", name).Msg("no data was found")
@@ -85,7 +87,7 @@ func (r *ListingsRepository) GetAllCurrentListings(ctx context.Context) (listing
 	// iterate over rows
 	for rows.Next() {
 		var entry listings.Listing
-		if err = rows.Scan(&entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.LastSeen); err != nil {
+		if err = rows.Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew); err != nil {
 			r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
 			return nil, fmt.Errorf("failed to scan a row in %s: %w", name, err)
 		}
@@ -99,32 +101,51 @@ func (r *ListingsRepository) GetAllCurrentListings(ctx context.Context) (listing
 	return result, nil
 }
 
-func (r *ListingsRepository) GetCurrentSearchQuery(ctx context.Context) (string, error) {
-	const name = "ListingsRepository.GetCurrentSearchQuery"
+func (r *ListingsRepository) GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (listings.Listings, error) {
+	const name = "ListingsRepository.GetListingsByUserIDTx"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
-	var searchQuery string
-	err := r.db.QueryRowContext(ctx, "SELECT search_query FROM search_query;").Scan(&searchQuery)
+	result := make(listings.Listings, 0, defaultCapacity)
+	rows, err := tx.QueryContext(ctx, "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new FROM listings WHERE user_id = ?;", userID)
 	if err != nil {
-		r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
-		return searchQuery, fmt.Errorf("failed to scan a row in %s: %w", name, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			r.log.Warn().Err(err).Str("method", name).Msg("no data was found")
+			return result, nil
+		}
+		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
+		return nil, fmt.Errorf("failed to execute query in %s: %w", name, err)
+	}
+	defer rows.Close()
+
+	// iterate over rows
+	for rows.Next() {
+		var entry listings.Listing
+		if err = rows.Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew); err != nil {
+			r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
+			return nil, fmt.Errorf("failed to scan a row in %s: %w", name, err)
+		}
+		result = append(result, entry)
+	}
+	if err = rows.Err(); err != nil {
+		r.log.Error().Err(err).Str("method", name).Msg("failed to iterate over rows in")
+		return nil, fmt.Errorf("failed to iterate over rows in %s: %w", name, err)
 	}
 
-	return searchQuery, nil
+	return result, nil
 }
 
-func (r *ListingsRepository) MUpdateListings(ctx context.Context, listings listings.Listings) error {
-	const fieldsLimit = 3640 // max is 32766 / 9
+func (r *ListingsRepository) UpsertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
+	const fieldsLimit = 3275 // max is 32766 divided by 10
 	if len(listings) <= fieldsLimit {
-		return r.mUpdateListings(ctx, listings)
+		return r.upsertListingsTx(ctx, tx, listings)
 	}
 
 	lbound := 0
 	hbound := fieldsLimit
 	for lbound < hbound {
 		listingsSlice := listings[lbound:hbound]
-		if err := r.mUpdateListings(ctx, listingsSlice); err != nil {
+		if err := r.upsertListingsTx(ctx, tx, listingsSlice); err != nil {
 			return err
 		}
 		lbound = hbound
@@ -136,10 +157,10 @@ func (r *ListingsRepository) MUpdateListings(ctx context.Context, listings listi
 	return nil
 }
 
-func (r *ListingsRepository) mUpdateListings(ctx context.Context, listings listings.Listings) error {
+func (r *ListingsRepository) upsertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
 	const (
-		name     = "ListingsRepository.mUpdateListings"
-		fieldsNb = 9
+		name     = "ListingsRepository.upsertListingsTx"
+		fieldsNb = 10
 	)
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
@@ -147,7 +168,7 @@ func (r *ListingsRepository) mUpdateListings(ctx context.Context, listings listi
 	// build query
 	b := strings.Builder{}
 	params := make([]interface{}, 0, len(listings)*fieldsNb)
-	b.WriteString("DELETE FROM LISTINGS; INSERT INTO listings (name, url, description, address_street, address_locality, address_region, currency, price, last_seen) VALUES ")
+	b.WriteString("INSERT INTO listings (user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new) VALUES ")
 	counter := 0
 	for idx := range listings {
 		if counter > 0 {
@@ -156,6 +177,7 @@ func (r *ListingsRepository) mUpdateListings(ctx context.Context, listings listi
 		b.WriteString("(" + strings.Repeat("?,", fieldsNb-1) + "?)")
 		params = append(
 			params,
+			listings[idx].UserID,
 			listings[idx].Name,
 			listings[idx].URL,
 			listings[idx].Description,
@@ -164,12 +186,14 @@ func (r *ListingsRepository) mUpdateListings(ctx context.Context, listings listi
 			listings[idx].Address.AddressRegion,
 			listings[idx].Offers.PriceCurrency,
 			listings[idx].Offers.Price,
-			listings[idx].LastSeen,
+			listings[idx].IsNew,
 		)
 		counter++
 	}
 
-	_, err := r.db.ExecContext(ctx, b.String(), params...)
+	b.WriteString(" ON CONFLICT (user_id, url) DO UPDATE SET name = excluded.name, description = excluded.description, address_street = excluded.address_street, address_locality = excluded.address_locality, address_region = excluded.address_region, currency = excluded.currency, price = excluded.price, is_new = false);")
+
+	_, err := tx.ExecContext(ctx, b.String(), params...)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return fmt.Errorf("failed to execute query in %s: %w", name, err)

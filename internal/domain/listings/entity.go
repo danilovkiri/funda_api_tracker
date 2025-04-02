@@ -3,20 +3,20 @@ package listings
 import (
 	"slices"
 	"sort"
-	"time"
 )
 
 type Listing struct {
-	Context     any       `json:"@context"`
-	Type        []string  `json:"@type"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Description string    `json:"description"`
-	Address     Address   `json:"address"`
-	Offers      Offers    `json:"offers"`
-	Image       string    `json:"image"`
-	Photo       []Photo   `json:"photo"`
-	LastSeen    time.Time `json:"-"`
+	UserID      string   `json:"userId"`
+	Context     any      `json:"@context"`
+	Type        []string `json:"@type"`
+	Name        string   `json:"name"`
+	URL         string   `json:"url"`
+	Description string   `json:"description"`
+	Address     Address  `json:"address"`
+	Offers      Offers   `json:"offers"`
+	Image       string   `json:"image"`
+	Photo       []Photo  `json:"photo"`
+	IsNew       bool     `json:"isNew"`
 }
 
 type Offers struct {
@@ -51,19 +51,22 @@ func (l *Listings) MapByURL() map[string]Listing {
 	return result
 }
 
-func (l *Listings) CompareAndGetRemovedListings(newListings Listings) Listings {
+func (l *Listings) CompareAndGetRemovedListings(newListings Listings) (removedListings, leftoverListings Listings) {
 	if l == nil || len(*l) == 0 {
-		return nil
+		return removedListings, leftoverListings
 	}
-	removedListings := make(Listings, 0, len(*l))
+	removedListings = make(Listings, 0, len(*l))
+	leftoverListings = make(Listings, 0, len(*l))
 	currentMap := l.MapByURL()
 	newMap := newListings.MapByURL()
 	for url := range currentMap {
 		if _, ok := newMap[url]; !ok {
 			removedListings = append(removedListings, currentMap[url])
+		} else {
+			leftoverListings = append(leftoverListings, currentMap[url])
 		}
 	}
-	return removedListings
+	return removedListings, leftoverListings
 }
 
 func (l *Listings) FilterByRegionsAndCities(regions, cities []string) Listings {
@@ -124,6 +127,17 @@ func (l *Listings) SortByPriceDesc() {
 	sort.SliceStable(*l, func(i, j int) bool {
 		return (*l)[i].Offers.Price > (*l)[j].Offers.Price
 	})
+}
+
+func (l *Listings) URLs() []string {
+	if l == nil || len(*l) == 0 {
+		return nil
+	}
+	urls := make([]string, 0, len(*l))
+	for idx := range *l {
+		urls = append(urls, (*l)[idx].URL)
+	}
+	return urls
 }
 
 type ListingItem struct {
