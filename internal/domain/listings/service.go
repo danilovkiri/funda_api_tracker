@@ -17,6 +17,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const (
+	fundaAPIQueryInterval = time.Millisecond * 500
+)
+
 type Service struct {
 	repository     Repository
 	fundaAPIClient FundaAPIClient
@@ -176,12 +180,16 @@ func (s *Service) GetNewListings(ctx context.Context) (Listings, error) {
 
 		// increment pagination
 		pageNumber++
+
+		// sleep
+		time.Sleep(fundaAPIQueryInterval)
 	}
 
 	// retrieve detailed listing data in parallel
 	resultsCh := make(chan *Listing, len(listingItems)) // buffer to prevent blocking
 	g, ctx := errgroup.WithContext(ctx)
 	for idx := range listingItems {
+		time.Sleep(fundaAPIQueryInterval)
 		g.Go(func() error {
 			listing, gErr := s.GetListing(ctx, listingItems[idx].URL)
 			if gErr != nil {

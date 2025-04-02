@@ -2,6 +2,7 @@ package listings
 
 import (
 	"slices"
+	"sort"
 	"time"
 )
 
@@ -114,6 +115,15 @@ func (l *Listings) CompareAndGetAddedListings(currentListings Listings) Listings
 		}
 	}
 	return addedListings
+}
+
+func (l *Listings) SortByPriceDesc() {
+	if l == nil || len(*l) == 0 {
+		return
+	}
+	sort.SliceStable(*l, func(i, j int) bool {
+		return (*l)[i].Offers.Price > (*l)[j].Offers.Price
+	})
 }
 
 type ListingItem struct {

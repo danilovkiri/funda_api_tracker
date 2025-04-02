@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"fundaNotifier/internal/domain/listings"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/rs/zerolog"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+)
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/rs/zerolog"
+const (
+	messageMaxCharLen = 4096
 )
 
 type ListingsService interface {
@@ -292,6 +295,13 @@ func (b *TelegramBot) isCurrentUser(userID string, chatID int64) bool {
 		return true
 	}
 
+	if b.opts.CurrentUserID == "" && b.opts.CurrentChatID == 0 {
+		b.log.Warn().Str("userID", userID).Int64("chatID", chatID).Msg("multiple session detected")
+		msgTxt := "❌Hi. The bot is not initialized by any user, run /start to initialize."
+		b.sendMessage(chatID, userID, msgTxt)
+		return false
+	}
+
 	b.log.Warn().Str("userID", userID).Int64("chatID", chatID).Msg("multiple session detected")
 	msgTxt := "❌Hi. The bot is currently running for another user, who must /stop the bot before you can proceed."
 	b.sendMessage(chatID, userID, msgTxt)
@@ -377,7 +387,7 @@ func (b *TelegramBot) getAndFilterUpdates(ctx context.Context, force bool) {
 	addedListings, removedListings, err := b.listingsService.UpdateAndCompareListings(ctx)
 	if err != nil {
 		b.log.Error().Err(err).Msg("failed to get and compare listings updates")
-		msgTxt := "💥failed to get listings updates"
+		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to get listings updates", time.Now().Format(time.RFC3339))
 		b.sendMessage(b.opts.CurrentChatID, b.opts.CurrentUserID, msgTxt)
 		return
 	}
