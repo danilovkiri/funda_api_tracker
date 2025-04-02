@@ -6,13 +6,14 @@ import (
 	"fundaNotifier/internal/domain"
 	"fundaNotifier/internal/domain/listings"
 	"fundaNotifier/internal/domain/sessions"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/rs/zerolog"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/rs/zerolog"
 )
 
 const (

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"fundaNotifier/internal/domain"
 	"fundaNotifier/internal/pkg/apperrors"
+
 	"github.com/rs/zerolog"
 )
 

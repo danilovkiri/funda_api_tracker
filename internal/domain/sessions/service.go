@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"fundaNotifier/internal/domain"
 	"fundaNotifier/internal/domain/listings"
-	"github.com/rs/zerolog"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 type ListingsService interface {
