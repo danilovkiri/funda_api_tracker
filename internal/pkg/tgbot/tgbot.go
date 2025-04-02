@@ -89,6 +89,12 @@ func (b *TelegramBot) Begin(ctx context.Context, wg *sync.WaitGroup) error {
 	u.Timeout = 60
 	updates := b.bot.GetUpdatesChan(u)
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		b.runSyncerByTicker(ctx)
+	}()
+
 	for {
 		select {
 		case update := <-updates:
@@ -483,7 +489,7 @@ func (b *TelegramBot) searchQueryIsSet(ctx context.Context, userID string) bool 
 	return true
 }
 
-func (b *TelegramBot) RunSyncerByTicker(ctx context.Context) {
+func (b *TelegramBot) runSyncerByTicker(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
