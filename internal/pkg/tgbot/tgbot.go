@@ -24,7 +24,6 @@ type ListingsService interface {
 	DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error
 	GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (listings.Listings, error)
 	GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (listings.Listings, error)
-	UpsertListingsByUserIDTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error
 	GetCurrentlyListedListings(ctx context.Context, searchQuery string) (listings.Listings, error)
 	UpdateAndCompareListings(ctx context.Context, userID, searchQuery string) (addedListings, removedListings, leftoverListings listings.Listings, err error)
 }
@@ -34,6 +33,7 @@ type SessionsService interface {
 	GetSessionByUserID(ctx context.Context, userID string) (*sessions.Session, error)
 	SelectSessionsForSync(ctx context.Context) (sessions.Sessions, error)
 	ActivateSession(ctx context.Context, userID string) error
+	DeactivateSession(ctx context.Context, userID string) error
 	UpdatePollingInterval(ctx context.Context, userID string, pollingIntervalSeconds int) error
 	UpdateRegions(ctx context.Context, userID string, regions string) error
 	UpdateCities(ctx context.Context, userID string, cities string) error
@@ -201,9 +201,10 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		if !session.IsActive {
 			msgTxt := "🤷You have already paused the polling, there is no need to /pause again"
 			b.sendMessage(chatID, user.UserName, msgTxt)
+			return
 		}
 
-		if err = b.sessionsService.ActivateSession(ctx, user.UserName); err != nil {
+		if err = b.sessionsService.DeactivateSession(ctx, user.UserName); err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to deactivate polling")
 			msgTxt := "💥failed to deactivate polling"
 			b.sendMessage(chatID, user.UserName, msgTxt)
@@ -266,7 +267,13 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			msgTxt := "💥failed to update regions"
 			b.sendMessage(chatID, user.UserName, msgTxt)
 		}
-		msgTxt := "✅Regions were set"
+
+		var msgTxt string
+		if utf8.RuneCountInString(regions) == 0 {
+			msgTxt = "✅Regions were reset"
+		} else {
+			msgTxt = "✅Regions were set"
+		}
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "set_cities":
@@ -274,14 +281,20 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			return
 		}
 
-		regions := update.Message.CommandArguments()
-		err := b.sessionsService.UpdateCities(ctx, user.UserName, regions)
+		cities := update.Message.CommandArguments()
+		err := b.sessionsService.UpdateCities(ctx, user.UserName, cities)
 		if err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to update cities")
 			msgTxt := "💥failed to update cities"
 			b.sendMessage(chatID, user.UserName, msgTxt)
 		}
-		msgTxt := "✅Cities were set"
+
+		var msgTxt string
+		if utf8.RuneCountInString(cities) == 0 {
+			msgTxt = "✅Cities were reset"
+		} else {
+			msgTxt = "✅Cities were set"
+		}
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "show_active_filters":
@@ -297,8 +310,18 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			return
 		}
 
-		msgTxt := "🌍Active regions: " + strings.Join(session.Regions, ", ") +
-			"\n📍Active cities: " + strings.Join(session.Cities, ", ")
+		var (
+			msgRegions = "all"
+			msgCities  = "all"
+		)
+		if len(session.Regions) > 0 {
+			msgRegions = strings.Join(session.Regions, ", ")
+		}
+		if len(session.CitiesRaw) > 0 {
+			msgCities = strings.Join(session.Cities, ", ")
+		}
+		msgTxt := "🌍Active regions: " + msgRegions +
+			"\n📍Active cities: " + msgCities
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "set_search_query":
@@ -318,6 +341,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "show_current_listings":
+		//TODO: filter by regions and cities
 		if !b.canDo(ctx, user.UserName, chatID) {
 			return
 		}
@@ -333,16 +357,21 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 
 		var msgTxt string
 		for idx := range allListings {
-			addMsgTxt := fmt.Sprintf("%.0f %s %s", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, allListings[idx].URL)
+			addMsgTxt := fmt.Sprintf("%.0f %s %s\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, allListings[idx].URL)
 			if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
 				b.sendMessage(chatID, user.UserName, msgTxt)
 				msgTxt = ""
 			}
 			msgTxt += addMsgTxt
 		}
+		if msgTxt == "" {
+			msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data"
+		}
+
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "show_new_listings":
+		//TODO: filter by regions and cities
 		if !b.canDo(ctx, user.UserName, chatID) {
 			return
 		}
@@ -354,17 +383,24 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			b.sendMessage(chatID, user.UserName, msgTxt)
 			return
 		}
+
+		fmt.Println(allListings)
+
 		allListings.SortByPriceDesc()
 
 		var msgTxt string
 		for idx := range allListings {
-			addMsgTxt := fmt.Sprintf("%.0f %s %s", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, allListings[idx].URL)
+			addMsgTxt := fmt.Sprintf("%.0f %s %s\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, allListings[idx].URL)
 			if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
 				b.sendMessage(chatID, user.UserName, msgTxt)
 				msgTxt = ""
 			}
 			msgTxt += addMsgTxt
 		}
+		if msgTxt == "" {
+			msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data; if you already did - this means that last sync retrieved zero new listings"
+		}
+
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "update_now":
@@ -527,18 +563,18 @@ func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Ses
 		return
 	}
 
-	addedListings, removedListings, _, err := b.listingsService.UpdateAndCompareListings(ctx, session.UserID, searchQuery)
-	if err != nil {
-		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to compare and update listings within sync iteration")
-		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to get listings updates", time.Now().Format(time.RFC3339))
-		b.sendMessage(session.ChatID, session.UserID, msgTxt)
-		return
-	}
-
 	err = b.sessionsService.UpdateLastSyncedAt(ctx, session.UserID, time.Now())
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to update last sync timestamp")
 		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to update last sync timestamp", time.Now().Format(time.RFC3339))
+		b.sendMessage(session.ChatID, session.UserID, msgTxt)
+		return
+	}
+
+	addedListings, removedListings, _, err := b.listingsService.UpdateAndCompareListings(ctx, session.UserID, searchQuery)
+	if err != nil {
+		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to compare and update listings within sync iteration")
+		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to get listings updates", time.Now().Format(time.RFC3339))
 		b.sendMessage(session.ChatID, session.UserID, msgTxt)
 		return
 	}

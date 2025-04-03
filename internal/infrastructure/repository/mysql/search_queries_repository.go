@@ -54,7 +54,7 @@ func (r *SearchQueriesRepository) GetSearchQueryByUserID(ctx context.Context, us
 	defer cancel()
 
 	var searchQuery string
-	err := r.db.QueryRowContext(ctx, "SELECT search_queries FROM search_query WHERE user_id = ?;", userID).Scan(&searchQuery)
+	err := r.db.QueryRowContext(ctx, "SELECT search_query FROM search_queries WHERE user_id = ?;", userID).Scan(&searchQuery)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
 		return searchQuery, fmt.Errorf("failed to scan a row in %s: %w", name, err)

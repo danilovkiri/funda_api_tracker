@@ -135,17 +135,17 @@ func (r *ListingsRepository) GetListingsByUserIDTx(ctx context.Context, tx domai
 	return result, nil
 }
 
-func (r *ListingsRepository) UpsertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
+func (r *ListingsRepository) InsertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
 	const fieldsLimit = 3275 // max is 32766 divided by 10
 	if len(listings) <= fieldsLimit {
-		return r.upsertListingsTx(ctx, tx, listings)
+		return r.insertListingsTx(ctx, tx, listings)
 	}
 
 	lbound := 0
 	hbound := fieldsLimit
 	for lbound < hbound {
 		listingsSlice := listings[lbound:hbound]
-		if err := r.upsertListingsTx(ctx, tx, listingsSlice); err != nil {
+		if err := r.insertListingsTx(ctx, tx, listingsSlice); err != nil {
 			return err
 		}
 		lbound = hbound
@@ -157,9 +157,9 @@ func (r *ListingsRepository) UpsertListingsTx(ctx context.Context, tx domain.Tx,
 	return nil
 }
 
-func (r *ListingsRepository) upsertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
+func (r *ListingsRepository) insertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
 	const (
-		name     = "ListingsRepository.upsertListingsTx"
+		name     = "ListingsRepository.insertListingsTx"
 		fieldsNb = 10
 	)
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
@@ -186,17 +186,38 @@ func (r *ListingsRepository) upsertListingsTx(ctx context.Context, tx domain.Tx,
 			listings[idx].Address.AddressRegion,
 			listings[idx].Offers.PriceCurrency,
 			listings[idx].Offers.Price,
-			listings[idx].IsNew,
+			true,
 		)
 		counter++
 	}
-
-	b.WriteString(" ON CONFLICT (user_id, url) DO UPDATE SET name = excluded.name, description = excluded.description, address_street = excluded.address_street, address_locality = excluded.address_locality, address_region = excluded.address_region, currency = excluded.currency, price = excluded.price, is_new = false);")
 
 	_, err := tx.ExecContext(ctx, b.String(), params...)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return fmt.Errorf("failed to execute query in %s: %w", name, err)
+	}
+
+	return nil
+}
+
+func (r *ListingsRepository) UpdateListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
+	const name = "ListingsRepository.UpdateListingsTx"
+	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
+	defer cancel()
+
+	stmt, err := tx.PrepareContext(ctx, "UPDATE listings SET name = ?, description = ?, address_street = ?, address_locality = ?, address_region = ?, currency = ?, price = ?, is_new = false WHERE user_id = ? and url = ?;")
+	if err != nil {
+		r.log.Error().Err(err).Str("method", name).Msg("failed to prepare statement in")
+		return fmt.Errorf("failed to prepare statement in %s: %w", name, err)
+	}
+	defer stmt.Close()
+
+	for idx := range listings {
+		_, err = stmt.ExecContext(ctx, listings[idx].Name, listings[idx].Description, listings[idx].Address.StreetAddress, listings[idx].Address.AddressLocality, listings[idx].Address.AddressRegion, listings[idx].Offers.PriceCurrency, listings[idx].Offers.Price, listings[idx].UserID, listings[idx].URL)
+		if err != nil {
+			r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
+			return fmt.Errorf("failed to execute query in %s: %w", name, err)
+		}
 	}
 
 	return nil

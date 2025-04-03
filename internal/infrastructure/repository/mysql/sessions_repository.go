@@ -57,7 +57,7 @@ func (r *SessionsRepository) GetSessionByUserIDTx(ctx context.Context, tx domain
 	defer cancel()
 
 	var session sessions.Session
-	err := tx.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.Regions, &session.Cities, &session.LastSyncedAt)
+	err := tx.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return nil, fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -73,7 +73,7 @@ func (r *SessionsRepository) GetSessionByUserID(ctx context.Context, userID stri
 	defer cancel()
 
 	var session sessions.Session
-	err := r.db.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.Regions, &session.Cities, &session.LastSyncedAt)
+	err := r.db.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return nil, fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -130,7 +130,7 @@ func (r *SessionsRepository) GetActiveSessions(ctx context.Context) (sessions.Se
 	// iterate over rows
 	for rows.Next() {
 		var session sessions.Session
-		if err = rows.Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.Regions, &session.Cities, &session.LastSyncedAt); err != nil {
+		if err = rows.Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt); err != nil {
 			r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
 			return nil, fmt.Errorf("failed to scan a row in %s: %w", name, err)
 		}

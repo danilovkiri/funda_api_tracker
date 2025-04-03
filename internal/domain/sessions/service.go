@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"fundaNotifier/internal/domain"
 	"fundaNotifier/internal/domain/listings"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -17,7 +18,6 @@ type ListingsService interface {
 	DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error
 	GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (listings.Listings, error)
 	GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (listings.Listings, error)
-	UpsertListingsByUserIDTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error
 	GetCurrentlyListedListings(ctx context.Context, searchQuery string) (listings.Listings, error)
 	GetListing(ctx context.Context, URL string) (*listings.Listing, error)
 }
@@ -153,6 +153,41 @@ func (s *Service) ActivateSession(ctx context.Context, userID string) error {
 	return nil
 }
 
+func (s *Service) DeactivateSession(ctx context.Context, userID string) error {
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	session, err := s.GetSessionByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get session for update")
+		return fmt.Errorf("failed to get session for update: %w", err)
+	}
+
+	session.IsActive = false
+
+	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
+		s.log.Error().Err(err).Msg("failed to update session")
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) UpdatePollingInterval(ctx context.Context, userID string, pollingIntervalSeconds int) error {
 	tx, err := s.repository.Begin(ctx)
 	if err != nil {
@@ -189,6 +224,8 @@ func (s *Service) UpdatePollingInterval(ctx context.Context, userID string, poll
 }
 
 func (s *Service) UpdateRegions(ctx context.Context, userID string, regions string) error {
+	regions = strings.ToLower(regions)
+
 	tx, err := s.repository.Begin(ctx)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to begin a transaction")
@@ -225,6 +262,8 @@ func (s *Service) UpdateRegions(ctx context.Context, userID string, regions stri
 }
 
 func (s *Service) UpdateCities(ctx context.Context, userID string, cities string) error {
+	cities = strings.ToLower(cities)
+
 	tx, err := s.repository.Begin(ctx)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to begin a transaction")

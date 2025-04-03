@@ -79,16 +79,6 @@ func (s *Service) GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userI
 	return listings, nil
 }
 
-func (s *Service) UpsertListingsByUserIDTx(ctx context.Context, tx domain.Tx, listings Listings) error {
-	err := s.repository.UpsertListingsTx(ctx, tx, listings)
-	if err != nil {
-		s.log.Error().Err(err).Msg("failed to upsert listings")
-		return fmt.Errorf("failed to upsert listings: %w", err)
-	}
-
-	return nil
-}
-
 func (s *Service) GetCurrentlyListedListings(ctx context.Context, searchQuery string) (Listings, error) {
 	parsedURL, err := url.Parse(searchQuery)
 	if err != nil {
@@ -245,18 +235,19 @@ func (s *Service) UpdateAndCompareListings(ctx context.Context, userID, searchQu
 
 	removedListings, leftoverListings = currentlyStoredListings.CompareAndGetRemovedListings(currentlyListedListings)
 	addedListings = currentlyListedListings.CompareAndGetAddedListings(currentlyStoredListings)
+	addedListings.SetUserID(userID)
 
 	if err = s.repository.DeleteListingsByUserIDAndURLsTx(ctx, tx, userID, removedListings.URLs()); err != nil {
 		s.log.Error().Err(err).Msg("failed to delete removed listings")
 		return nil, nil, nil, fmt.Errorf("failed to delete removed listings: %w", err)
 	}
 
-	if err = s.repository.UpsertListingsTx(ctx, tx, addedListings); err != nil {
+	if err = s.repository.InsertListingsTx(ctx, tx, addedListings); err != nil {
 		s.log.Error().Err(err).Msg("failed to add new listings")
 		return nil, nil, nil, fmt.Errorf("failed to add new listings: %w", err)
 	}
 
-	if err = s.repository.UpsertListingsTx(ctx, tx, leftoverListings); err != nil {
+	if err = s.repository.UpdateListingsTx(ctx, tx, leftoverListings); err != nil {
 		s.log.Error().Err(err).Msg("failed to update remaining listings")
 		return nil, nil, nil, fmt.Errorf("failed to update remaining listings: %w", err)
 	}

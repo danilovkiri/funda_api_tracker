@@ -3,6 +3,7 @@ package listings
 import (
 	"slices"
 	"sort"
+	"strings"
 )
 
 type Listing struct {
@@ -82,21 +83,21 @@ func (l *Listings) FilterByRegionsAndCities(regions, cities []string) Listings {
 		}
 
 		if len(regions) != 0 && len(cities) == 0 {
-			if slices.Contains(regions, (*l)[idx].Address.AddressRegion) {
+			if slices.Contains(regions, strings.ToLower((*l)[idx].Address.AddressRegion)) {
 				filteredListings = append(filteredListings, (*l)[idx])
 				continue
 			}
 		}
 
 		if len(regions) == 0 && len(cities) != 0 {
-			if slices.Contains(cities, (*l)[idx].Address.AddressLocality) {
+			if slices.Contains(cities, strings.ToLower((*l)[idx].Address.AddressLocality)) {
 				filteredListings = append(filteredListings, (*l)[idx])
 				continue
 			}
 		}
 
 		if len(regions) != 0 && len(cities) != 0 {
-			if slices.Contains(regions, (*l)[idx].Address.AddressRegion) || slices.Contains(cities, (*l)[idx].Address.AddressLocality) {
+			if slices.Contains(regions, strings.ToLower((*l)[idx].Address.AddressRegion)) || slices.Contains(cities, strings.ToLower((*l)[idx].Address.AddressLocality)) {
 				filteredListings = append(filteredListings, (*l)[idx])
 				continue
 			}
@@ -138,6 +139,15 @@ func (l *Listings) URLs() []string {
 		urls = append(urls, (*l)[idx].URL)
 	}
 	return urls
+}
+
+func (l *Listings) SetUserID(userID string) {
+	if l == nil || len(*l) == 0 {
+		return
+	}
+	for idx := range *l {
+		(*l)[idx].UserID = userID
+	}
 }
 
 type ListingItem struct {
