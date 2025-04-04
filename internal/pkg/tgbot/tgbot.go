@@ -444,6 +444,10 @@ func (b *TelegramBot) sendMessage(chatID int64, userID, message string) {
 }
 
 func (b *TelegramBot) isAuthorizedUser(userID string, chatID int64) bool {
+	if b.cfg.AuthorizedUsers == nil || len(b.cfg.AuthorizedUsers) == 0 {
+		return true
+	}
+
 	for idx := range b.cfg.AuthorizedUsers {
 		if b.cfg.AuthorizedUsers[idx] == userID {
 			return true
