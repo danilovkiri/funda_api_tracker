@@ -1,5 +1,5 @@
 package mysql
 
 type Config struct { //nolint:golint
-	DNS string `env:"MYSQL_DNS" env-default:"./example.db"`
+	DNS string `env:"SQLITE_DNS" env-default:"./example.db?_loc=auto"`
 }
