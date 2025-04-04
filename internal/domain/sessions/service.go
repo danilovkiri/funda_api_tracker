@@ -108,14 +108,14 @@ func (s *Service) DeleteSessionByUserIDTx(ctx context.Context, tx domain.Tx, use
 	return nil
 }
 
-func (s *Service) SelectSessionsForSync(ctx context.Context) (Sessions, error) {
-	activeSessions, err := s.repository.GetActiveSessions(ctx)
+func (s *Service) GetSessions(ctx context.Context, onlyActive bool) (Sessions, error) {
+	activeSessions, err := s.repository.GetSessions(ctx, onlyActive)
 	if err != nil {
-		s.log.Error().Err(err).Msg("failed to get active sessions")
-		return nil, fmt.Errorf("failed to get active sessions: %w", err)
+		s.log.Error().Err(err).Msg("failed to get sessions")
+		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
 
-	return activeSessions.SelectForSync(), nil
+	return activeSessions, nil
 }
 
 func (s *Service) ActivateSession(ctx context.Context, userID string) error {

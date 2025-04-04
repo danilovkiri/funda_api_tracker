@@ -111,13 +111,20 @@ func (r *SessionsRepository) UpdateSessionByUserIDTx(ctx context.Context, tx dom
 	return nil
 }
 
-func (r *SessionsRepository) GetActiveSessions(ctx context.Context) (sessions.Sessions, error) {
-	const name = "SessionsRepository.GetActiveSessions"
+func (r *SessionsRepository) GetSessions(ctx context.Context, onlyActive bool) (sessions.Sessions, error) {
+	const name = "SessionsRepository.GetSessions"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
+	var query string
+	if onlyActive {
+		query = "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE is_active IS TRUE;"
+	} else {
+		query = "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions;"
+	}
+
 	result := make(sessions.Sessions, 0, defaultCapacity)
-	rows, err := r.db.QueryContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE is_active IS TRUE")
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return result, nil

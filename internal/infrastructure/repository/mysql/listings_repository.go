@@ -136,6 +136,10 @@ func (r *ListingsRepository) GetListingsByUserIDTx(ctx context.Context, tx domai
 }
 
 func (r *ListingsRepository) InsertListingsTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
+	if listings == nil || len(listings) == 0 {
+		return nil
+	}
+
 	const fieldsLimit = 3275 // max is 32766 divided by 10
 	if len(listings) <= fieldsLimit {
 		return r.insertListingsTx(ctx, tx, listings)
@@ -204,6 +208,10 @@ func (r *ListingsRepository) UpdateListingsTx(ctx context.Context, tx domain.Tx,
 	const name = "ListingsRepository.UpdateListingsTx"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
+
+	if listings == nil || len(listings) == 0 {
+		return nil
+	}
 
 	stmt, err := tx.PrepareContext(ctx, "UPDATE listings SET name = ?, description = ?, address_street = ?, address_locality = ?, address_region = ?, currency = ?, price = ?, is_new = false WHERE user_id = ? and url = ?;")
 	if err != nil {

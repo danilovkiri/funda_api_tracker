@@ -3,8 +3,6 @@ package tgbot
 import (
 	"context"
 	"fmt"
-	"fundaNotifier/internal/domain"
-	"fundaNotifier/internal/domain/listings"
 	"fundaNotifier/internal/domain/sessions"
 	"strconv"
 	"strings"
@@ -19,31 +17,6 @@ import (
 const (
 	messageMaxCharLen = 4096
 )
-
-type ListingsService interface {
-	DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error
-	GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (listings.Listings, error)
-	GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (listings.Listings, error)
-	GetCurrentlyListedListings(ctx context.Context, searchQuery string) (listings.Listings, error)
-	UpdateAndCompareListings(ctx context.Context, userID, searchQuery string) (addedListings, removedListings, leftoverListings listings.Listings, err error)
-}
-type SessionsService interface {
-	CreateDefaultSession(ctx context.Context, userID string, chatID int64) error
-	SessionExistsByUserID(ctx context.Context, userID string) (bool, error)
-	GetSessionByUserID(ctx context.Context, userID string) (*sessions.Session, error)
-	SelectSessionsForSync(ctx context.Context) (sessions.Sessions, error)
-	ActivateSession(ctx context.Context, userID string) error
-	DeactivateSession(ctx context.Context, userID string) error
-	UpdatePollingInterval(ctx context.Context, userID string, pollingIntervalSeconds int) error
-	UpdateRegions(ctx context.Context, userID string, regions string) error
-	UpdateCities(ctx context.Context, userID string, cities string) error
-	RemoveEverythingByUserID(ctx context.Context, userID string) error
-	UpdateLastSyncedAt(ctx context.Context, userID string, lastSyncedAt time.Time) error
-}
-type SearchQueryService interface {
-	GetSearchQuery(ctx context.Context, userID string) (URL string, err error)
-	UpsertSearchQueryByUserID(ctx context.Context, userID, searchQuery string) error
-}
 
 type TelegramBot struct {
 	log                *zerolog.Logger
@@ -227,6 +200,12 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			return
 		}
 
+		if pollingIntervalSeconds < 300 {
+			msgTxt := "⚠️Interval cannot be less than 300 seconds"
+			b.sendMessage(chatID, user.UserName, msgTxt)
+			return
+		}
+
 		err = b.sessionsService.UpdatePollingInterval(ctx, user.UserName, pollingIntervalSeconds)
 		if err != nil {
 			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to update polling interval")
@@ -341,8 +320,15 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "show_current_listings":
-		//TODO: filter by regions and cities
 		if !b.canDo(ctx, user.UserName, chatID) {
+			return
+		}
+
+		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
+		if err != nil {
+			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
+			msgTxt := "💥failed to get your session details"
+			b.sendMessage(chatID, user.UserName, msgTxt)
 			return
 		}
 
@@ -353,6 +339,7 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 			b.sendMessage(chatID, user.UserName, msgTxt)
 			return
 		}
+		allListings = allListings.FilterByRegionsAndCities(session.Regions, session.Cities)
 		allListings.SortByPriceDesc()
 
 		var msgTxt string
@@ -371,26 +358,31 @@ func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update)
 		b.sendMessage(chatID, user.UserName, msgTxt)
 
 	case "show_new_listings":
-		//TODO: filter by regions and cities
 		if !b.canDo(ctx, user.UserName, chatID) {
 			return
 		}
 
-		allListings, err := b.listingsService.GetListingsByUserID(ctx, user.UserName, true)
+		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
+		if err != nil {
+			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
+			msgTxt := "💥failed to get your session details"
+			b.sendMessage(chatID, user.UserName, msgTxt)
+			return
+		}
+
+		newListings, err := b.listingsService.GetListingsByUserID(ctx, user.UserName, true)
 		if err != nil {
 			b.log.Error().Err(err).Msg("failed to get all listings")
 			msgTxt := "💥failed to get all listings"
 			b.sendMessage(chatID, user.UserName, msgTxt)
 			return
 		}
-
-		fmt.Println(allListings)
-
-		allListings.SortByPriceDesc()
+		newListings = newListings.FilterByRegionsAndCities(session.Regions, session.Cities)
+		newListings.SortByPriceDesc()
 
 		var msgTxt string
-		for idx := range allListings {
-			addMsgTxt := fmt.Sprintf("%.0f %s %s\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, allListings[idx].URL)
+		for idx := range newListings {
+			addMsgTxt := fmt.Sprintf("%.0f %s %s\n", newListings[idx].Offers.Price, newListings[idx].Offers.PriceCurrency, newListings[idx].URL)
 			if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
 				b.sendMessage(chatID, user.UserName, msgTxt)
 				msgTxt = ""
@@ -542,11 +534,12 @@ func (b *TelegramBot) runSyncerByTicker(ctx context.Context) {
 }
 
 func (b *TelegramBot) syncer(ctx context.Context, forcedSendMessage bool) {
-	sessionsForSync, err := b.sessionsService.SelectSessionsForSync(ctx)
+	activeSessions, err := b.sessionsService.GetSessions(ctx, true)
 	if err != nil {
 		b.log.Error().Err(err).Msg("failed to fetch sessions for sync")
 		return
 	}
+	sessionsForSync := activeSessions.SelectForSync()
 	b.log.Info().Int("number_of_sessions", len(sessionsForSync)).Msg("attempting to sync sessions")
 
 	for idx := range sessionsForSync {
