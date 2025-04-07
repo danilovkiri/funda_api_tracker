@@ -57,7 +57,7 @@ func (r *SessionsRepository) GetSessionByUserIDTx(ctx context.Context, tx domain
 	defer cancel()
 
 	var session sessions.Session
-	err := tx.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt)
+	err := tx.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at, sync_count_since_last_change, dnd_status, dnd_start, dnd_end FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt, &session.SyncCountSinceLastChange, &session.DNDActive, &session.DNDStart, &session.DNDEnd)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return nil, fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -73,7 +73,7 @@ func (r *SessionsRepository) GetSessionByUserID(ctx context.Context, userID stri
 	defer cancel()
 
 	var session sessions.Session
-	err := r.db.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt)
+	err := r.db.QueryRowContext(ctx, "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at, sync_count_since_last_change, dnd_status, dnd_start, dnd_end FROM sessions WHERE user_id = ?;", userID).Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt, &session.SyncCountSinceLastChange, &session.DNDActive, &session.DNDStart, &session.DNDEnd)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return nil, fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -102,7 +102,7 @@ func (r *SessionsRepository) UpdateSessionByUserIDTx(ctx context.Context, tx dom
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
-	_, err := tx.ExecContext(ctx, "UPDATE sessions SET update_interval_seconds = ?, is_active = ?, regions = ?, cities = ?, last_synced_at = ? WHERE user_id = ?;", session.UpdateIntervalSeconds, session.IsActive, session.RegionsRaw, session.CitiesRaw, session.LastSyncedAt, session.UserID)
+	_, err := tx.ExecContext(ctx, "UPDATE sessions SET update_interval_seconds = ?, is_active = ?, regions = ?, cities = ?, last_synced_at = ?, sync_count_since_last_change = ?, dnd_status = ?, dnd_start = ?, dnd_end = ? WHERE user_id = ?;", session.UpdateIntervalSeconds, session.IsActive, session.RegionsRaw, session.CitiesRaw, session.LastSyncedAt, session.SyncCountSinceLastChange, session.DNDActive, session.DNDStart, session.DNDEnd, session.UserID)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -111,16 +111,16 @@ func (r *SessionsRepository) UpdateSessionByUserIDTx(ctx context.Context, tx dom
 	return nil
 }
 
-func (r *SessionsRepository) GetSessions(ctx context.Context, onlyActive bool) (sessions.Sessions, error) {
-	const name = "SessionsRepository.GetSessions"
+func (r *SessionsRepository) MGetSession(ctx context.Context, onlyActive bool) (sessions.Sessions, error) {
+	const name = "SessionsRepository.MGetSession"
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
 	var query string
 	if onlyActive {
-		query = "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions WHERE is_active IS TRUE;"
+		query = "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at, sync_count_since_last_change, dnd_status, dnd_start, dnd_end FROM sessions WHERE is_active IS TRUE;"
 	} else {
-		query = "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at FROM sessions;"
+		query = "SELECT user_id, chat_id, update_interval_seconds, is_active, regions, cities, last_synced_at, sync_count_since_last_change, dnd_status, dnd_start, dnd_end FROM sessions;"
 	}
 
 	result := make(sessions.Sessions, 0, defaultCapacity)
@@ -137,7 +137,7 @@ func (r *SessionsRepository) GetSessions(ctx context.Context, onlyActive bool) (
 	// iterate over rows
 	for rows.Next() {
 		var session sessions.Session
-		if err = rows.Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt); err != nil {
+		if err = rows.Scan(&session.UserID, &session.ChatID, &session.UpdateIntervalSeconds, &session.IsActive, &session.RegionsRaw, &session.CitiesRaw, &session.LastSyncedAt, &session.SyncCountSinceLastChange, &session.DNDActive, &session.DNDStart, &session.DNDEnd); err != nil {
 			r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
 			return nil, fmt.Errorf("failed to scan a row in %s: %w", name, err)
 		}

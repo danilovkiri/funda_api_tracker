@@ -2,35 +2,66 @@
 
 ## Description
 
-The bot polls the Funda API and sends the notification each time the polling was successfully run. The notification
-contains the amount of listings (added and removed) as compared to the previous run. The bot can provide information on
-these listings when asked to do so.
+The bot functionality includes the following:
 
-Each user has a session. Session exists in DB from `/start` till `/stop`, it is deleted upon `/stop` with all data
-related to session's UserID (session, search parameters and listings).
+1. Polling https://www.funda.nl HTTP API using user-defined search-query by user-defined schedule and by manual trigger;
+2. Storing and updating retrieved listings in a DB;
+3. Sending messages to user containing statistics on each polling run;
+4. Sending messages to user containing currently stored or newly added listings;
+5. Filtering listings by user-defined regions and cities;
+6. Adding listings to 'favorites';
+7. Sending messages to user containing 'favorite' listings;
+8. DND mode
 
-Each user can define a list of regions and cities for filtering. Regions can be set with `/set_regions` followed by a
-comma-separated list of regions (case-insensitive). Cities can be set with `/set_cities` followed by a comma-separated
-list of cities (case-insensitive). Both regions and cities can be reset with same commands if invoked without values or
-altered at any moment. Filtering by regions works in a way that listings pass filters if their corresponding attributes
-match one of the values in user-provided regions and/or cities.
+## Key concepts
 
-`/run` activates scheduled API polling until turned off by `/pause`. The schedule can be defined by `/set_polling_interval`,
-followed by a value of seconds between consecutive API pollings (integer, min 300, default 3600), the value can be
-altered any time. You can optionally trigger a manual listings update via `/update_now`.
+### Sessions
 
-Each session has a list of currently stored listings in DB with their attributes (location, unique URL, prices, etc.).
-These listings are updated each time the API polling is successful. At any moment you can invoke `/show_current_listings`
-to see all currently stored listings from DB (price and URL), or `/show_new_listings` to see only those listings which
-were added in the previous run.
+The bot operates within a user session, which is created upon `/start` and is removed upon `/stop` command, which also
+deletes **all** data, accumulated or generated within that session.
 
-Listings are retrieved using a URL which you must define by running `/set_search_query` followed by a URL (e.g. `https://www.funda.nl/en/zoeken/huur/?selected_area=[%22nl%22]&price=%221000-2000%22&object_type=[%22apartment%22,%22house%22]&publication_date=%221%22`).
-You can change the search query any time by invoking the same command again with a new URL. Note that the next scheduled
-or triggered API polling after the URL is changed will compare the newly retrieved listings with the currently stored in
-DB (which would have been retrieved using another URL).
+The session stores user-defined parameters:
+1. API polling interval — must be set with `set_polling_interval` followed by a valid duration string (e.g. `1000s`,
+   `3m` `1h`, `1.5h`, `2h30m15s`, min allowed value is 900s). This parameter defined how often the scheduled API polling
+   runs will be executed with data being sent to user. Can be changed at any moment. When changed, the next polling will
+   commence if the newly defined interval has passed since the last polling.
+2. API polling status — a boolean flag which either enables or disables scheduled API polling runs. API polling can be 
+   turned on via `/run` and off via `/pause`. Invoking `/run` after a period of pause exceeding the API polling interval
+   duration will trigger an immediate polling run.
+3. Regions and cities used for listing filtering at the bot-level. Regions can be set via `/set_regions` followed by
+   a comma-separated list of region names (case-insensitive) or via `/add_region` followed by a single region name. The
+   same applies to city names via `/set_cities` and `/add_city`. These filters are applied only when sending data to user,
+   not when collecting or storing data, thus can be changed any moment.
+4. DND mode state — a boolean flag which either enables or disables DND mode, which pauses any scheduled API polling
+   runs. Can be turned on and off via `/dnd_activate` and `/dnd_deactivate`, respectfully. DND schedule can be set via
+   `/dnd_set_schedule` followed by two comma-separated values, defining time in a format of HH:MM **in UTC**
+   (e.g. `/dnd_set_schedule 23:00,09:00`).
 
-Run `/help` to see the list of available commands.
+### Search query
 
+The bot can parse the HTTP API responses only when received from Funda list-type page. You can try the
+[example URL] (https://www.funda.nl/en/zoeken/huur/?selected_area=[%22nl%22]&price=%221000-2000%22&object_type=[%22apartment%22,%22house%22]&publication_date=%223%22)
+and adapt it as you see fit. You just need to copy the URL from the browser and paste in after the command
+`/set_search_query`. The URL can be changed any moment, and any API polling runs executed after search query change will
+overwrite existing data.
+
+### Listings
+
+Listings are retrieved each time the scheduled API polling is commenced and when a manual trigger `/update_now` is
+invoked. Each iteration removes listings from DB, which are not currently listed, and adds new listings. The user
+can retrieve either all listings from DB via `/show_current_listings` or only newly added ones via `/show_new_listings`.
+
+### Favorites
+
+User can add a listing to a list of favorites by clicking the button provided under each listing when invoking
+`/show_current_listings` or `/show_new_listings`. To access a list of favorites one must use `/show_favorites` command.
+The list cannot be edited or deleted except when calling `/stop`. You can add a listing to favorites only when it is
+present in the DB, which means that you cannot add a listing to favorites if it was removed from storage.
+
+### Other
+
+Always see `/help` to get a full list of available commands with their description. The commands in `/help` precede over
+the description here.
 
 ## Prerequisites
 

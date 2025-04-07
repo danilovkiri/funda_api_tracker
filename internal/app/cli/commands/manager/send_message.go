@@ -77,7 +77,7 @@ func (t *SendMessageCommand) Execute(ctx *cli.Context) error {
 
 	var activeSessions sessions.Sessions
 	if sendToAll {
-		activeSessions, err = t.sessionsService.GetSessions(localCtx, true)
+		activeSessions, err = t.sessionsService.MGetSession(localCtx, true)
 		if err != nil {
 			t.log.Fatal().Err(err).Msg("failed to get active sessions")
 		}

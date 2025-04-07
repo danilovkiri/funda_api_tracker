@@ -1,12 +1,14 @@
 package listings
 
 import (
+	"github.com/google/uuid"
 	"slices"
 	"sort"
 	"strings"
 )
 
 type Listing struct {
+	UUID        string   `json:"UUID"`
 	UserID      string   `json:"userId"`
 	Context     any      `json:"@context"`
 	Type        []string `json:"@type"`
@@ -147,6 +149,15 @@ func (l *Listings) SetUserID(userID string) {
 	}
 	for idx := range *l {
 		(*l)[idx].UserID = userID
+	}
+}
+
+func (l *Listings) GenerateUUIDs() {
+	if l == nil || len(*l) == 0 {
+		return
+	}
+	for idx := range *l {
+		(*l)[idx].UUID = uuid.NewString()
 	}
 }
 

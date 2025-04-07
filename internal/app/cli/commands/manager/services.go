@@ -6,5 +6,5 @@ import (
 )
 
 type SessionsService interface {
-	GetSessions(ctx context.Context, onlyActive bool) (sessions.Sessions, error)
+	MGetSession(ctx context.Context, onlyActive bool) (sessions.Sessions, error)
 }

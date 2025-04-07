@@ -13,5 +13,5 @@ type Repository interface {
 	GetSessionByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (*Session, error)
 	UpdateSessionByUserIDTx(ctx context.Context, tx domain.Tx, session *Session) error
 	DeleteSessionByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error
-	GetSessions(ctx context.Context, onlyActive bool) (Sessions, error)
+	MGetSession(ctx context.Context, onlyActive bool) (Sessions, error)
 }

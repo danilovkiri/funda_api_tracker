@@ -48,7 +48,7 @@ func (t *ShowSessionsCommand) Execute(ctx *cli.Context) error {
 
 	onlyActive := ctx.Bool("onlyActive")
 
-	selectedSessions, err := t.sessionsService.GetSessions(localCtx, onlyActive)
+	selectedSessions, err := t.sessionsService.MGetSession(localCtx, onlyActive)
 	if err != nil {
 		t.log.Error().Err(err).Msg("failed to execute CLI command")
 		return fmt.Errorf("failed to execute CLI command: %w", err)

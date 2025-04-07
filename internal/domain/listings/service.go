@@ -39,8 +39,8 @@ func NewService(
 	}
 }
 
-func (s *Service) DeleteListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error {
-	err := s.repository.DeleteListingsByUserIDTx(ctx, tx, userID)
+func (s *Service) MDeleteListingByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error {
+	err := s.repository.MDeleteListingByUserIDTx(ctx, tx, userID)
 	if err != nil {
 		s.log.Error().Err(err).Str("userID", userID).Msg("failed to delete listings")
 		return fmt.Errorf("failed to delete listings: %w", err)
@@ -49,8 +49,8 @@ func (s *Service) DeleteListingsByUserIDTx(ctx context.Context, tx domain.Tx, us
 	return nil
 }
 
-func (s *Service) DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error {
-	err := s.repository.DeleteListingsByUserIDAndURLsTx(ctx, tx, userID, URLs)
+func (s *Service) MDeleteListingByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error {
+	err := s.repository.MDeleteListingByUserIDAndURLsTx(ctx, tx, userID, URLs)
 	if err != nil {
 		s.log.Error().Err(err).Str("userID", userID).Msg("failed to delete listings")
 		return fmt.Errorf("failed to delete listings: %w", err)
@@ -59,8 +59,8 @@ func (s *Service) DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain
 	return nil
 }
 
-func (s *Service) GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (Listings, error) {
-	listings, err := s.repository.GetListingsByUserID(ctx, userID, showOnlyNew)
+func (s *Service) MGetListingByUserID(ctx context.Context, userID string, showOnlyNew bool) (Listings, error) {
+	listings, err := s.repository.MGetListingByUserID(ctx, userID, showOnlyNew)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to get listings")
 		return nil, fmt.Errorf("failed to get listings: %w", err)
@@ -69,14 +69,87 @@ func (s *Service) GetListingsByUserID(ctx context.Context, userID string, showOn
 	return listings, nil
 }
 
-func (s *Service) GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (Listings, error) {
-	listings, err := s.repository.GetListingsByUserIDTx(ctx, tx, userID)
+func (s *Service) MGetListingByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (Listings, error) {
+	listings, err := s.repository.MGetListingByUserIDTx(ctx, tx, userID)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to get listings")
 		return nil, fmt.Errorf("failed to get listings: %w", err)
 	}
 
 	return listings, nil
+}
+
+func (s *Service) GetListingByUUID(ctx context.Context, UUID string) (*Listing, error) {
+	listing, err := s.repository.GetListingByUUID(ctx, UUID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get listing")
+		return nil, fmt.Errorf("failed to get listing: %w", err)
+	}
+
+	return listing, nil
+}
+
+func (s *Service) MGetFavoriteListingByUserID(ctx context.Context, userID string) (Listings, error) {
+	listings, err := s.repository.MGetFavoriteListingByUserID(ctx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get favorite listings")
+		return nil, fmt.Errorf("failed to get favorite listings: %w", err)
+	}
+
+	return listings, nil
+}
+
+func (s *Service) AddFavoriteListing(ctx context.Context, listing *Listing) error {
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	favoriteListings, err := s.repository.MGetFavoriteListingByUserIDTx(ctx, tx, listing.UserID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get favorite listings")
+		return fmt.Errorf("failed to get favorite listings: %w", err)
+	}
+
+	favoriteListingsMap := favoriteListings.MapByURL()
+	if _, ok := favoriteListingsMap[listing.URL]; !ok {
+		err = s.repository.InsertFavoriteListingTx(ctx, tx, listing)
+		if err != nil {
+			s.log.Error().Err(err).Msg("failed to insert favorite listing")
+			return fmt.Errorf("failed to insert favorite listing: %w", err)
+		}
+	} else {
+		err = s.repository.UpdateFavoriteListingTx(ctx, tx, listing)
+		if err != nil {
+			s.log.Error().Err(err).Msg("failed to update favorite listing")
+			return fmt.Errorf("failed to update favorite listing: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) MDeleteFavoriteListingByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error {
+	err := s.repository.MDeleteFavoriteListingByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Str("userID", userID).Msg("failed to delete favorite listings")
+		return fmt.Errorf("failed to delete favorite listings: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) GetCurrentlyListedListings(ctx context.Context, searchQuery string) (Listings, error) {
@@ -227,7 +300,7 @@ func (s *Service) UpdateAndCompareListings(ctx context.Context, userID, searchQu
 		return nil, nil, nil, fmt.Errorf("failed to get currently listed listings: %w", err)
 	}
 
-	currentlyStoredListings, err := s.repository.GetListingsByUserIDTx(ctx, tx, userID)
+	currentlyStoredListings, err := s.repository.MGetListingByUserIDTx(ctx, tx, userID)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to get currently stored listings")
 		return nil, nil, nil, fmt.Errorf("failed to get currently stored listings: %w", err)
@@ -236,18 +309,19 @@ func (s *Service) UpdateAndCompareListings(ctx context.Context, userID, searchQu
 	removedListings, leftoverListings = currentlyStoredListings.CompareAndGetRemovedListings(currentlyListedListings)
 	addedListings = currentlyListedListings.CompareAndGetAddedListings(currentlyStoredListings)
 	addedListings.SetUserID(userID)
+	addedListings.GenerateUUIDs()
 
-	if err = s.repository.DeleteListingsByUserIDAndURLsTx(ctx, tx, userID, removedListings.URLs()); err != nil {
+	if err = s.repository.MDeleteListingByUserIDAndURLsTx(ctx, tx, userID, removedListings.URLs()); err != nil {
 		s.log.Error().Err(err).Msg("failed to delete removed listings")
 		return nil, nil, nil, fmt.Errorf("failed to delete removed listings: %w", err)
 	}
 
-	if err = s.repository.InsertListingsTx(ctx, tx, addedListings); err != nil {
+	if err = s.repository.MInsertListingTx(ctx, tx, addedListings); err != nil {
 		s.log.Error().Err(err).Msg("failed to add new listings")
 		return nil, nil, nil, fmt.Errorf("failed to add new listings: %w", err)
 	}
 
-	if err = s.repository.UpdateListingsTx(ctx, tx, leftoverListings); err != nil {
+	if err = s.repository.MUpdateListingTx(ctx, tx, leftoverListings); err != nil {
 		s.log.Error().Err(err).Msg("failed to update remaining listings")
 		return nil, nil, nil, fmt.Errorf("failed to update remaining listings: %w", err)
 	}

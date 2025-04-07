@@ -3,36 +3,60 @@ package tgbot
 import (
 	"context"
 	"fmt"
+	"fundaNotifier/internal/domain/listings"
+	"fundaNotifier/internal/domain/search_queries"
 	"fundaNotifier/internal/domain/sessions"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-	"unicode/utf8"
-
+	"fundaNotifier/internal/pkg/tgbot/commands"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/rs/zerolog"
+	"sync"
+	"time"
 )
 
-const (
-	messageMaxCharLen = 4096
-)
+func defineCommands() tgbotapi.SetMyCommandsConfig {
+	registeredCommands := []tgbotapi.BotCommand{
+		{Command: "start", Description: "Initialize the bot"},
+		{Command: "run", Description: "Start scheduled API polling"},
+		{Command: "pause", Description: "Pause scheduled API polling"},
+		{Command: "stop", Description: "Stop the bot, remove your data and everything"},
+		{Command: "set_search_query", Description: "Set search query (resets the database and current settings)"},
+		{Command: "set_polling_interval", Description: "Set polling interval (e.g. `1000s`, `3m` `1h`, `1.5h`, `2h30m15s`, minimal value is 900s)"},
+		{Command: "set_regions", Description: "Set regions (comma-separated, case-insensitive) or reset (if invoked without message)"},
+		{Command: "set_cities", Description: "Set cities (comma-separated, case-insensitive) or reset (if invoked without message)"},
+		{Command: "add_region", Description: "Add one region (case-insensitive)"},
+		{Command: "add_city", Description: "Add one city (case-insensitive)"},
+		{Command: "show_active_filters", Description: "Show currently set regions and cities"},
+		{Command: "show_polling_interval", Description: "Show currently set polling interval"},
+		{Command: "update_now", Description: "Trigger manual update"},
+		{Command: "show_current_listings", Description: "Show all currently stored listings"},
+		{Command: "tap_current_listings", Description: "Show all currently stored listings with an option to save any of them as favorites"},
+		{Command: "show_new_listings", Description: "Show all newly added listings"},
+		{Command: "show_favorites", Description: "Show all favorite listings"},
+		{Command: "dnd_set_schedule", Description: "Set DND interval in UTC as start and end HH:MM (e.g. `/set_dnd_period 23:00,08:00`), DND means that API polling will be paused during the set interval if DND is turned on"},
+		{Command: "dnd_show_schedule", Description: "Show DND schedule"},
+		{Command: "dnd_activate", Description: "Turn on DND"},
+		{Command: "dnd_deactivate", Description: "Turn off DND"},
+		{Command: "help", Description: "Show help"},
+	}
+	return tgbotapi.NewSetMyCommands(registeredCommands...)
+}
 
 type TelegramBot struct {
-	log                *zerolog.Logger
-	bot                *tgbotapi.BotAPI
-	cfg                *Config
-	listingsService    ListingsService
-	sessionsService    SessionsService
-	searchQueryService SearchQueryService
+	log                  *zerolog.Logger
+	bot                  *tgbotapi.BotAPI
+	cfg                  *Config
+	commands             *commands.TelegramBotCommands
+	listingsService      *listings.Service
+	sessionsService      *sessions.Service
+	searchQueriesService *search_queries.Service
 }
 
 func NewTelegramBot(
 	cfg *Config,
 	log *zerolog.Logger,
-	listingsService ListingsService,
-	sessionsService SessionsService,
-	searchQueryService SearchQueryService,
+	listingsService *listings.Service,
+	sessionsService *sessions.Service,
+	searchQueriesService *search_queries.Service,
 ) *TelegramBot {
 	log.Info().Msg("initializing telegram bot instance")
 
@@ -49,12 +73,23 @@ func NewTelegramBot(
 
 	log.Info().Str("account", bot.Self.UserName).Msg("telegram bot was authorized as")
 	return &TelegramBot{
-		cfg:                cfg,
-		log:                log,
-		bot:                bot,
-		listingsService:    listingsService,
-		sessionsService:    sessionsService,
-		searchQueryService: searchQueryService,
+		cfg:                  cfg,
+		log:                  log,
+		bot:                  bot,
+		commands:             commands.NewTelegramBotCommands(log, bot, listingsService, sessionsService, searchQueriesService),
+		listingsService:      listingsService,
+		sessionsService:      sessionsService,
+		searchQueriesService: searchQueriesService,
+	}
+}
+
+func (b *TelegramBot) sendMessage(chatID int64, userID, message string) {
+	msg := tgbotapi.NewMessage(chatID, message)
+	msg.DisableWebPagePreview = true
+	msg.ParseMode = "MarkdownV2"
+	_, err := b.bot.Send(msg)
+	if err != nil {
+		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send message to")
 	}
 }
 
@@ -72,10 +107,14 @@ func (b *TelegramBot) Begin(ctx context.Context, wg *sync.WaitGroup) error {
 	for {
 		select {
 		case update := <-updates:
-			if update.Message == nil {
-				continue
+			switch {
+			case update.CallbackQuery != nil:
+				b.updateCallbackHandler(ctx, update)
+			case update.Message.Command() != "":
+				b.updateCommandHandler(ctx, update)
+			default:
+				break
 			}
-			b.updateHandler(ctx, update)
 		case <-ctx.Done():
 			b.log.Info().Msg("attempting to gracefully shutdown telegram bot updates handling")
 			return nil
@@ -83,453 +122,173 @@ func (b *TelegramBot) Begin(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 }
 
-func (b *TelegramBot) updateHandler(ctx context.Context, update tgbotapi.Update) {
+func (b *TelegramBot) updateCallbackHandler(ctx context.Context, update tgbotapi.Update) {
+	user := update.CallbackQuery.From
+	chatID := update.CallbackQuery.Message.Chat.ID
+	msgID := update.CallbackQuery.Message.MessageID
+	b.log.Debug().Str("userID", user.UserName).Int64("chatID", chatID).Msg("received callback from")
+
+	// check that user is in whitelist
+	if !b.isAuthorizedUser(user.UserName, chatID) {
+		b.reactToCallbackError(user.UserName, chatID, update)
+		return
+	}
+
+	if update.CallbackQuery.Data == disabledButtonCallbackData {
+		b.reactToCallbackError(user.UserName, chatID, update)
+		return
+	}
+
+	listing, err := b.listingsService.GetListingByUUID(ctx, update.CallbackQuery.Data)
+	if err != nil {
+		b.log.Error().Err(err).Str("userID", user.UserName).Msg("failed to get a listing inside a callback query")
+		msgTxt := "💥Failed to get a listing inside a callback query"
+		b.sendMessage(chatID, user.UserName, msgTxt)
+		b.reactToCallbackError(user.UserName, chatID, update)
+		return
+	}
+
+	err = b.listingsService.AddFavoriteListing(ctx, listing)
+	if err != nil {
+		b.log.Error().Err(err).Str("userID", user.UserName).Msg("failed to add a favorite listing")
+		msgTxt := "💥Failed to add a favorite listing"
+		b.sendMessage(chatID, user.UserName, msgTxt)
+		b.reactToCallbackError(user.UserName, chatID, update)
+		return
+	}
+
+	b.reactToCallback(user.UserName, chatID, msgID, update)
+}
+
+func (b *TelegramBot) reactToCallbackError(userID string, chatID int64, update tgbotapi.Update) {
+	_, err := b.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "💥either an error or you have already added it to favorites"))
+	if err != nil {
+		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send callback call to")
+	}
+}
+
+func (b *TelegramBot) reactToCallback(userID string, chatID int64, msgID int, update tgbotapi.Update) {
+	_, err := b.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "✅"))
+	if err != nil {
+		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send callback call to")
+	}
+
+	updatedKeyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💚", disabledButtonCallbackData),
+		),
+	)
+
+	// Edit the message to update the button
+	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, updatedKeyboard)
+	if _, err = b.bot.Request(edit); err != nil {
+		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to update button")
+	}
+}
+
+func (b *TelegramBot) updateCommandHandler(ctx context.Context, update tgbotapi.Update) {
 	user := update.Message.From
 	chatID := update.Message.Chat.ID
-	b.log.Debug().Str("userID", user.UserName).Int64("chatID", chatID).Msg("received message from")
+	b.log.Debug().Str("userID", user.UserName).Int64("chatID", chatID).Msg("received command from")
 
+	// check that user is in whitelist
 	if !b.isAuthorizedUser(user.UserName, chatID) {
 		return
 	}
 
+	// resolve command and call corresponding execution logic
 	switch update.Message.Command() {
 	case "start":
 		if !b.canStart(ctx, user.UserName, chatID) {
 			return
 		}
-
-		if err := b.sessionsService.CreateDefaultSession(ctx, user.UserName, chatID); err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to create a new session")
-			msgTxt := "💥failed to create a new session"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		msgTxt := "👋Hi\n✨Please run /help to see all available commands.\n❗You must define search query with /set_search_query\n❗You must define polling interval with /set_polling_interval\n❓You may optionally define active regions with /set_regions\n❓You may optionally define active cities with /set_cities"
-		b.sendMessage(chatID, user.UserName, msgTxt)
+		b.commands.Start(ctx, user.UserName, chatID)
 
 	case "stop":
 		if !b.canStop(ctx, user.UserName, chatID) {
 			return
 		}
-
-		if err := b.sessionsService.RemoveEverythingByUserID(ctx, user.UserName); err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to remove everything upon /stop command")
-			msgTxt := "💥failed to remove everything upon /stop command"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		msgTxt := "⏹️You have stopped the bot, all your data and settings were removed"
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "run":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		if !b.searchQueryIsSet(ctx, user.UserName) {
-			b.log.Warn().Str("userID", user.UserName).Int64("chatID", chatID).Msg("unable to /run with no search query")
-			msgTxt := "💥unable to /run, search query required (set it with /set_search_query followed by URL)"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		if session.IsActive {
-			msgTxt := "🤷You have already started the polling, there is no need to /run again"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-		}
-
-		if err = b.sessionsService.ActivateSession(ctx, user.UserName); err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to activate polling")
-			msgTxt := "💥failed to activate polling"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		msgTxt := "▶️You have started the polling, from now on you will receive notifications once per polling interval (if updates are found)"
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "pause":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		if !session.IsActive {
-			msgTxt := "🤷You have already paused the polling, there is no need to /pause again"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		if err = b.sessionsService.DeactivateSession(ctx, user.UserName); err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to deactivate polling")
-			msgTxt := "💥failed to deactivate polling"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		msgTxt := "⏸️You have paused the polling, from now on you will not receive notifications"
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "set_polling_interval":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		intervalStr := update.Message.CommandArguments()
-		pollingIntervalSeconds, err := strconv.Atoi(intervalStr)
-		if err != nil {
-			msgTxt := "⚠️Invalid interval"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		if pollingIntervalSeconds < 300 {
-			msgTxt := "⚠️Interval cannot be less than 300 seconds"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		err = b.sessionsService.UpdatePollingInterval(ctx, user.UserName, pollingIntervalSeconds)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to update polling interval")
-			msgTxt := "💥failed to update polling interval"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-		}
-
-		pollingInterval := time.Duration(pollingIntervalSeconds) * time.Second
-		msgTxt := "✅Polling interval was set to: " + pollingInterval.String()
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "show_polling_interval":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		pollingInterval := time.Duration(session.UpdateIntervalSeconds) * time.Second
-		msgTxt := "⏳Active polling interval: " + pollingInterval.String()
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "set_regions":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		regions := update.Message.CommandArguments()
-		err := b.sessionsService.UpdateRegions(ctx, user.UserName, regions)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to update regions")
-			msgTxt := "💥failed to update regions"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-		}
-
-		var msgTxt string
-		if utf8.RuneCountInString(regions) == 0 {
-			msgTxt = "✅Regions were reset"
-		} else {
-			msgTxt = "✅Regions were set"
-		}
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "set_cities":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		cities := update.Message.CommandArguments()
-		err := b.sessionsService.UpdateCities(ctx, user.UserName, cities)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to update cities")
-			msgTxt := "💥failed to update cities"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-		}
-
-		var msgTxt string
-		if utf8.RuneCountInString(cities) == 0 {
-			msgTxt = "✅Cities were reset"
-		} else {
-			msgTxt = "✅Cities were set"
-		}
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "show_active_filters":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		var (
-			msgRegions = "all"
-			msgCities  = "all"
-		)
-		if len(session.Regions) > 0 {
-			msgRegions = strings.Join(session.Regions, ", ")
-		}
-		if len(session.CitiesRaw) > 0 {
-			msgCities = strings.Join(session.Cities, ", ")
-		}
-		msgTxt := "🌍Active regions: " + msgRegions +
-			"\n📍Active cities: " + msgCities
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "set_search_query":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		searchQuery := update.Message.CommandArguments()
-		if err := b.searchQueryService.UpsertSearchQueryByUserID(ctx, user.UserName, searchQuery); err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to update search query")
-			msgTxt := "💥failed to update search query"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		msgTxt := "✅New search query was set"
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "show_current_listings":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		allListings, err := b.listingsService.GetListingsByUserID(ctx, user.UserName, false)
-		if err != nil {
-			b.log.Error().Err(err).Msg("failed to get all listings")
-			msgTxt := "💥failed to get all listings"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-		allListings = allListings.FilterByRegionsAndCities(session.Regions, session.Cities)
-		allListings.SortByPriceDesc()
-
-		var msgTxt string
-		for idx := range allListings {
-			addMsgTxt := fmt.Sprintf("%.0f %s %s\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, allListings[idx].URL)
-			if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
-				b.sendMessage(chatID, user.UserName, msgTxt)
-				msgTxt = ""
-			}
-			msgTxt += addMsgTxt
-		}
-		if msgTxt == "" {
-			msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data"
-		}
-
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "show_new_listings":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		newListings, err := b.listingsService.GetListingsByUserID(ctx, user.UserName, true)
-		if err != nil {
-			b.log.Error().Err(err).Msg("failed to get all listings")
-			msgTxt := "💥failed to get all listings"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-		newListings = newListings.FilterByRegionsAndCities(session.Regions, session.Cities)
-		newListings.SortByPriceDesc()
-
-		var msgTxt string
-		for idx := range newListings {
-			addMsgTxt := fmt.Sprintf("%.0f %s %s\n", newListings[idx].Offers.Price, newListings[idx].Offers.PriceCurrency, newListings[idx].URL)
-			if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
-				b.sendMessage(chatID, user.UserName, msgTxt)
-				msgTxt = ""
-			}
-			msgTxt += addMsgTxt
-		}
-		if msgTxt == "" {
-			msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data; if you already did - this means that last sync retrieved zero new listings"
-		}
-
-		b.sendMessage(chatID, user.UserName, msgTxt)
-
-	case "update_now":
-		if !b.canDo(ctx, user.UserName, chatID) {
-			return
-		}
-
-		if !b.searchQueryIsSet(ctx, user.UserName) {
-			b.log.Warn().Str("userID", user.UserName).Int64("chatID", chatID).Msg("unable to /update_now with no search query")
-			msgTxt := "💥unable to /update_now, search query required (set it with /set_search_query followed by URL)"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		session, err := b.sessionsService.GetSessionByUserID(ctx, user.UserName)
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to get session details")
-			msgTxt := "💥failed to get your session details"
-			b.sendMessage(chatID, user.UserName, msgTxt)
-			return
-		}
-
-		b.syncerIteration(ctx, session, true)
-
-	case "help":
-		commands, err := b.bot.GetMyCommands()
-		if err != nil {
-			b.log.Error().Err(err).Str("userID", user.UserName).Int64("chatID", chatID).Msg("failed to send message to")
-			return
-		}
-		var msgTxt string
-		for idx := range commands {
-			msgTxt = msgTxt + "ℹ️/" + commands[idx].Command + " — " + commands[idx].Description + "\n"
-		}
-		b.sendMessage(chatID, user.UserName, msgTxt)
+		b.commands.Stop(ctx, user.UserName, chatID)
 
 	default:
-		msgTxt := "⚠️Unknown command"
-		b.sendMessage(chatID, user.UserName, msgTxt)
-	}
-}
+		if !b.canDo(ctx, user.UserName, chatID) {
+			return
+		}
 
-func (b *TelegramBot) sendMessage(chatID int64, userID, message string) {
-	msg := tgbotapi.NewMessage(chatID, message)
-	_, err := b.bot.Send(msg)
-	if err != nil {
-		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send message to")
-	}
-}
+		switch update.Message.Command() {
+		case "run":
+			b.commands.Run(ctx, user.UserName, chatID)
 
-func (b *TelegramBot) isAuthorizedUser(userID string, chatID int64) bool {
-	if b.cfg.AuthorizedUsers == nil || len(b.cfg.AuthorizedUsers) == 0 {
-		return true
-	}
+		case "pause":
+			b.commands.Pause(ctx, user.UserName, chatID)
 
-	for idx := range b.cfg.AuthorizedUsers {
-		if b.cfg.AuthorizedUsers[idx] == userID {
-			return true
+		case "set_polling_interval":
+			b.commands.SetPollingInterval(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "show_polling_interval":
+			b.commands.ShowPollingInterval(ctx, user.UserName, chatID)
+
+		case "set_regions":
+			b.commands.SetRegions(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "set_cities":
+			b.commands.SetCities(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "add_region":
+			b.commands.AddRegion(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "add_city":
+			b.commands.AddCity(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "show_active_filters":
+			b.commands.ShowActiveFilters(ctx, user.UserName, chatID)
+
+		case "set_search_query":
+			b.commands.SetSearchQuery(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "show_current_listings":
+			b.commands.ShowCurrentListings(ctx, user.UserName, chatID)
+		case "tap_current_listings":
+			b.commands.ShowCurrentListingsWithButtons(ctx, user.UserName, chatID)
+
+		case "show_new_listings":
+			b.commands.ShowNewListings(ctx, user.UserName, chatID)
+
+		case "show_favorites":
+			b.commands.ShowFavorites(ctx, user.UserName, chatID)
+
+		case "update_now":
+			b.commands.UpdateNow(ctx, user.UserName, chatID)
+
+		case "dnd_set_schedule":
+			b.commands.SetDNDSchedule(ctx, user.UserName, chatID, update.Message.CommandArguments())
+
+		case "dnd_show_schedule":
+			b.commands.ShowDNDSchedule(ctx, user.UserName, chatID)
+
+		case "dnd_activate":
+			b.commands.ActivateDND(ctx, user.UserName, chatID)
+
+		case "dnd_deactivate":
+			b.commands.DeactivateDND(ctx, user.UserName, chatID)
+
+		case "help":
+			b.commands.Help(ctx, user.UserName, chatID)
+		default:
+			msgTxt := "⚠️Unknown command"
+			b.sendMessage(chatID, user.UserName, msgTxt)
 		}
 	}
-
-	b.log.Warn().Str("userID", userID).Int64("chatID", chatID).Msg("unauthorized user detected")
-	msgTxt := "🚫We are sorry, but you are not authorized to use this bot"
-	b.sendMessage(chatID, userID, msgTxt)
-	return false
-}
-
-func (b *TelegramBot) canStart(ctx context.Context, userID string, chatID int64) bool {
-	sessionExists, err := b.sessionsService.SessionExistsByUserID(ctx, userID)
-	if err != nil {
-		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to check whether session exists")
-		msgTxt := "💥We failed to check whether your session already exists"
-		b.sendMessage(chatID, userID, msgTxt)
-		return false
-	}
-
-	if sessionExists {
-		msgTxt := "🤷Your session already exists, there is nothing to /start"
-		b.sendMessage(chatID, userID, msgTxt)
-		return false
-	}
-
-	return true
-}
-
-func (b *TelegramBot) canStop(ctx context.Context, userID string, chatID int64) bool {
-	sessionExists, err := b.sessionsService.SessionExistsByUserID(ctx, userID)
-	if err != nil {
-		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to check whether session exists")
-		msgTxt := "💥We failed to check whether your session already exists"
-		b.sendMessage(chatID, userID, msgTxt)
-		return false
-	}
-
-	if sessionExists {
-		return true
-	}
-
-	msgTxt := "🤷Your session does not exist, there is nothing to /stop"
-	b.sendMessage(chatID, userID, msgTxt)
-	return false
-}
-
-func (b *TelegramBot) canDo(ctx context.Context, userID string, chatID int64) bool {
-	sessionExists, err := b.sessionsService.SessionExistsByUserID(ctx, userID)
-	if err != nil {
-		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to check whether session exists")
-		msgTxt := "💥We failed to check whether your session already exists"
-		b.sendMessage(chatID, userID, msgTxt)
-		return false
-	}
-
-	if sessionExists {
-		return true
-	}
-
-	msgTxt := "❌Your session does not exist, run /start to initialize your session"
-	b.sendMessage(chatID, userID, msgTxt)
-	return false
-}
-
-func (b *TelegramBot) searchQueryIsSet(ctx context.Context, userID string) bool {
-	_, err := b.searchQueryService.GetSearchQuery(ctx, userID)
-	if err != nil {
-		return false
-	}
-	return true
 }
 
 func (b *TelegramBot) runSyncerByTicker(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(workerTickerInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			b.syncer(ctx, false)
+			b.syncer(ctx)
 		case <-ctx.Done():
 			b.log.Info().Msg("shutting down in-bot ticker")
 			return
@@ -537,8 +296,8 @@ func (b *TelegramBot) runSyncerByTicker(ctx context.Context) {
 	}
 }
 
-func (b *TelegramBot) syncer(ctx context.Context, forcedSendMessage bool) {
-	activeSessions, err := b.sessionsService.GetSessions(ctx, true)
+func (b *TelegramBot) syncer(ctx context.Context) {
+	activeSessions, err := b.sessionsService.MGetSession(ctx, true)
 	if err != nil {
 		b.log.Error().Err(err).Msg("failed to fetch sessions for sync")
 		return
@@ -547,12 +306,19 @@ func (b *TelegramBot) syncer(ctx context.Context, forcedSendMessage bool) {
 	b.log.Info().Int("number_of_sessions", len(sessionsForSync)).Msg("attempting to sync sessions")
 
 	for idx := range sessionsForSync {
-		b.syncerIteration(ctx, &sessionsForSync[idx], forcedSendMessage)
+		if sessionsForSync[idx].IsWithinDND() {
+			continue
+		}
+		var forceSendMessage bool
+		if sessionsForSync[idx].SyncCountSinceLastChange <= nSessionsWithForcedMessageSending {
+			forceSendMessage = true
+		}
+		b.syncerIteration(ctx, &sessionsForSync[idx], forceSendMessage)
 	}
 }
 
-func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Session, forcedSendMessage bool) {
-	searchQuery, err := b.searchQueryService.GetSearchQuery(ctx, session.UserID)
+func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Session, forceSendMessage bool) {
+	searchQuery, err := b.searchQueriesService.GetSearchQuery(ctx, session.UserID)
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to get search query for sync")
 		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to get listings updates", time.Now().Format(time.RFC3339))
@@ -578,9 +344,8 @@ func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Ses
 
 	filteredAddedListings := addedListings.FilterByRegionsAndCities(session.Regions, session.Cities)
 	filteredRemovedListings := removedListings.FilterByRegionsAndCities(session.Regions, session.Cities)
-	if len(filteredAddedListings) != 0 || forcedSendMessage {
+	if len(filteredAddedListings) != 0 || forceSendMessage {
 		msgTxt := fmt.Sprintf("📅Updated at %s\n➕Added listings count: %d\n➖Removed listings count: %d", time.Now().Format(time.RFC3339), len(filteredAddedListings), len(filteredRemovedListings))
 		b.sendMessage(session.ChatID, session.UserID, msgTxt)
 	}
-
 }

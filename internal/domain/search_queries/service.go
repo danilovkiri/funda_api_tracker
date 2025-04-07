@@ -2,11 +2,8 @@ package search_queries
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"fundaNotifier/internal/domain"
-	"fundaNotifier/internal/pkg/apperrors"
 
 	"github.com/rs/zerolog"
 )
@@ -29,10 +26,6 @@ func NewService(
 func (s *Service) GetSearchQuery(ctx context.Context, userID string) (URL string, err error) {
 	URL, err = s.repository.GetSearchQueryByUserID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.log.Warn().Str("userID", userID).Err(err).Msg("search query was not found")
-			return URL, apperrors.ErrNotFound
-		}
 		s.log.Error().Err(err).Str("userID", userID).Msg("failed to get search query")
 		return URL, fmt.Errorf("failed to get search query: %w", err)
 	}

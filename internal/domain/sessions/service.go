@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"fundaNotifier/internal/domain"
-	"fundaNotifier/internal/domain/listings"
 	"strings"
 	"time"
 
@@ -14,12 +13,8 @@ import (
 )
 
 type ListingsService interface {
-	DeleteListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error
-	DeleteListingsByUserIDAndURLsTx(ctx context.Context, tx domain.Tx, userID string, URLs []string) error
-	GetListingsByUserID(ctx context.Context, userID string, showOnlyNew bool) (listings.Listings, error)
-	GetListingsByUserIDTx(ctx context.Context, tx domain.Tx, userID string) (listings.Listings, error)
-	GetCurrentlyListedListings(ctx context.Context, searchQuery string) (listings.Listings, error)
-	GetListing(ctx context.Context, URL string) (*listings.Listing, error)
+	MDeleteListingByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error
+	MDeleteFavoriteListingByUserIDTx(ctx context.Context, tx domain.Tx, userID string) error
 }
 
 type SearchQueriesService interface {
@@ -108,14 +103,120 @@ func (s *Service) DeleteSessionByUserIDTx(ctx context.Context, tx domain.Tx, use
 	return nil
 }
 
-func (s *Service) GetSessions(ctx context.Context, onlyActive bool) (Sessions, error) {
-	activeSessions, err := s.repository.GetSessions(ctx, onlyActive)
+func (s *Service) MGetSession(ctx context.Context, onlyActive bool) (Sessions, error) {
+	activeSessions, err := s.repository.MGetSession(ctx, onlyActive)
 	if err != nil {
 		s.log.Error().Err(err).Msg("failed to get sessions")
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
 
 	return activeSessions, nil
+}
+
+func (s *Service) SetDNDSchedule(ctx context.Context, userID string, DNDStart, DNDEnd int) error {
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	session, err := s.GetSessionByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get session for update")
+		return fmt.Errorf("failed to get session for update: %w", err)
+	}
+
+	session.DNDStart = DNDStart
+	session.DNDEnd = DNDEnd
+
+	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
+		s.log.Error().Err(err).Msg("failed to update session")
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) ActivateDND(ctx context.Context, userID string) error {
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	session, err := s.GetSessionByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get session for update")
+		return fmt.Errorf("failed to get session for update: %w", err)
+	}
+
+	session.DNDActive = true
+
+	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
+		s.log.Error().Err(err).Msg("failed to update session")
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) DeactivateDND(ctx context.Context, userID string) error {
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	session, err := s.GetSessionByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get session for update")
+		return fmt.Errorf("failed to get session for update: %w", err)
+	}
+
+	session.DNDActive = false
+
+	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
+		s.log.Error().Err(err).Msg("failed to update session")
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) ActivateSession(ctx context.Context, userID string) error {
@@ -174,6 +275,7 @@ func (s *Service) DeactivateSession(ctx context.Context, userID string) error {
 	}
 
 	session.IsActive = false
+	session.SyncCountSinceLastChange = 0
 
 	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
 		s.log.Error().Err(err).Msg("failed to update session")
@@ -209,6 +311,7 @@ func (s *Service) UpdatePollingInterval(ctx context.Context, userID string, poll
 	}
 
 	session.UpdateIntervalSeconds = pollingIntervalSeconds
+	session.SyncCountSinceLastChange = 0
 
 	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
 		s.log.Error().Err(err).Msg("failed to update session")
@@ -247,6 +350,7 @@ func (s *Service) UpdateRegions(ctx context.Context, userID string, regions stri
 
 	session.RegionsRaw = regions
 	session.ParseRawRegionsAndCities()
+	session.SyncCountSinceLastChange = 0
 
 	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
 		s.log.Error().Err(err).Msg("failed to update session")
@@ -285,6 +389,85 @@ func (s *Service) UpdateCities(ctx context.Context, userID string, cities string
 
 	session.CitiesRaw = cities
 	session.ParseRawRegionsAndCities()
+	session.SyncCountSinceLastChange = 0
+
+	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
+		s.log.Error().Err(err).Msg("failed to update session")
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) AddCity(ctx context.Context, userID string, city string) error {
+	city = strings.TrimSpace(strings.ToLower(city))
+
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	session, err := s.GetSessionByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get session for update")
+		return fmt.Errorf("failed to get session for update: %w", err)
+	}
+
+	session.CitiesRaw += "," + city
+	session.ParseRawRegionsAndCities()
+	session.SyncCountSinceLastChange = 0
+
+	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
+		s.log.Error().Err(err).Msg("failed to update session")
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		s.log.Error().Err(err).Msg("failed to commit a transaction")
+		return fmt.Errorf("failed to commit a transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) AddRegion(ctx context.Context, userID string, region string) error {
+	region = strings.TrimSpace(strings.ToLower(region))
+
+	tx, err := s.repository.Begin(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to begin a transaction")
+		return fmt.Errorf("failed to begin a transaction: %w", err)
+	}
+
+	defer func(tx domain.Tx) {
+		errRb := tx.Rollback()
+		if errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			s.log.Error().Err(errRb).Msg("failed to rollback a transaction")
+		}
+	}(tx)
+
+	session, err := s.GetSessionByUserIDTx(ctx, tx, userID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get session for update")
+		return fmt.Errorf("failed to get session for update: %w", err)
+	}
+
+	session.RegionsRaw += "," + region
+	session.ParseRawRegionsAndCities()
+	session.SyncCountSinceLastChange = 0
 
 	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
 		s.log.Error().Err(err).Msg("failed to update session")
@@ -320,6 +503,7 @@ func (s *Service) UpdateLastSyncedAt(ctx context.Context, userID string, lastSyn
 	}
 
 	session.LastSyncedAt = lastSyncedAt
+	session.SyncCountSinceLastChange += 1
 
 	if err = s.UpdateSessionByUserIDTx(ctx, tx, session); err != nil {
 		s.log.Error().Err(err).Msg("failed to update session")
@@ -348,7 +532,12 @@ func (s *Service) RemoveEverythingByUserID(ctx context.Context, userID string) e
 		}
 	}(tx)
 
-	if err = s.listingsService.DeleteListingsByUserIDTx(ctx, tx, userID); err != nil {
+	if err = s.listingsService.MDeleteListingByUserIDTx(ctx, tx, userID); err != nil {
+		s.log.Error().Err(err).Msg("failed to delete listings upon deletion request")
+		return fmt.Errorf("failed to delete listings upon deletion request: %w", err)
+	}
+
+	if err = s.listingsService.MDeleteFavoriteListingByUserIDTx(ctx, tx, userID); err != nil {
 		s.log.Error().Err(err).Msg("failed to delete listings upon deletion request")
 		return fmt.Errorf("failed to delete listings upon deletion request: %w", err)
 	}
