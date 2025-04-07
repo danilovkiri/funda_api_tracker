@@ -9,6 +9,7 @@ import (
 	"fundaNotifier/internal/pkg/tgbot/commands"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/rs/zerolog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -83,10 +84,12 @@ func NewTelegramBot(
 	}
 }
 
-func (b *TelegramBot) sendMessage(chatID int64, userID, message string) {
+func (b *TelegramBot) sendMessage(chatID int64, userID, message string, md2 bool) {
 	msg := tgbotapi.NewMessage(chatID, message)
 	msg.DisableWebPagePreview = true
-	msg.ParseMode = "MarkdownV2"
+	if md2 {
+		msg.ParseMode = "MarkdownV2"
+	}
 	_, err := b.bot.Send(msg)
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send message to")
@@ -143,7 +146,7 @@ func (b *TelegramBot) updateCallbackHandler(ctx context.Context, update tgbotapi
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", user.UserName).Msg("failed to get a listing inside a callback query")
 		msgTxt := "💥Failed to get a listing inside a callback query"
-		b.sendMessage(chatID, user.UserName, msgTxt)
+		b.sendMessage(chatID, user.UserName, msgTxt, false)
 		b.reactToCallbackError(user.UserName, chatID, update)
 		return
 	}
@@ -152,7 +155,7 @@ func (b *TelegramBot) updateCallbackHandler(ctx context.Context, update tgbotapi
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", user.UserName).Msg("failed to add a favorite listing")
 		msgTxt := "💥Failed to add a favorite listing"
-		b.sendMessage(chatID, user.UserName, msgTxt)
+		b.sendMessage(chatID, user.UserName, msgTxt, false)
 		b.reactToCallbackError(user.UserName, chatID, update)
 		return
 	}
@@ -276,7 +279,7 @@ func (b *TelegramBot) updateCommandHandler(ctx context.Context, update tgbotapi.
 			b.commands.Help(ctx, user.UserName, chatID)
 		default:
 			msgTxt := "⚠️Unknown command"
-			b.sendMessage(chatID, user.UserName, msgTxt)
+			b.sendMessage(chatID, user.UserName, msgTxt, false)
 		}
 	}
 }
@@ -322,7 +325,7 @@ func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Ses
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to get search query for sync")
 		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to get listings updates", time.Now().Format(time.RFC3339))
-		b.sendMessage(session.ChatID, session.UserID, msgTxt)
+		b.sendMessage(session.ChatID, session.UserID, msgTxt, false)
 		return
 	}
 
@@ -330,7 +333,7 @@ func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Ses
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to update last sync timestamp")
 		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to update last sync timestamp", time.Now().Format(time.RFC3339))
-		b.sendMessage(session.ChatID, session.UserID, msgTxt)
+		b.sendMessage(session.ChatID, session.UserID, msgTxt, false)
 		return
 	}
 
@@ -338,7 +341,7 @@ func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Ses
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", session.UserID).Msg("failed to compare and update listings within sync iteration")
 		msgTxt := fmt.Sprintf("📅Updated at %s\n💥failed to get listings updates", time.Now().Format(time.RFC3339))
-		b.sendMessage(session.ChatID, session.UserID, msgTxt)
+		b.sendMessage(session.ChatID, session.UserID, msgTxt, false)
 		return
 	}
 
@@ -346,6 +349,30 @@ func (b *TelegramBot) syncerIteration(ctx context.Context, session *sessions.Ses
 	filteredRemovedListings := removedListings.FilterByRegionsAndCities(session.Regions, session.Cities)
 	if len(filteredAddedListings) != 0 || forceSendMessage {
 		msgTxt := fmt.Sprintf("📅Updated at %s\n➕Added listings count: %d\n➖Removed listings count: %d", time.Now().Format(time.RFC3339), len(filteredAddedListings), len(filteredRemovedListings))
-		b.sendMessage(session.ChatID, session.UserID, msgTxt)
+		b.sendMessage(session.ChatID, session.UserID, msgTxt, false)
 	}
+}
+
+func escapeMarkdownV2(text string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+		"~", "\\~",
+		"`", "\\`",
+		">", "\\>",
+		"#", "\\#",
+		"+", "\\+",
+		"-", "\\-",
+		"=", "\\=",
+		"|", "\\|",
+		"{", "\\{",
+		"}", "\\}",
+		".", "\\.",
+		"!", "\\!",
+	)
+	return replacer.Replace(text)
 }

@@ -14,5 +14,5 @@ func (c *TelegramBotCommands) Help(ctx context.Context, userID string, chatID in
 	for idx := range commands {
 		msgTxt = msgTxt + "ℹ️/" + commands[idx].Command + " — " + commands[idx].Description + "\n"
 	}
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 }

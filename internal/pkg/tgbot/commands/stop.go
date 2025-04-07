@@ -14,7 +14,7 @@ func (c *TelegramBotCommands) Stop(ctx context.Context, userID string, chatID in
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")
 		msgTxt := "💥Failed to get your session details"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -25,7 +25,7 @@ func (c *TelegramBotCommands) Stop(ctx context.Context, userID string, chatID in
 		} else {
 			c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get search query upon /stop command")
 			msgTxt := "💥Failed to get search query upon /stop command"
-			c.sendMessage(chatID, userID, msgTxt)
+			c.sendMessage(chatID, userID, msgTxt, false)
 			return
 		}
 	}
@@ -33,7 +33,7 @@ func (c *TelegramBotCommands) Stop(ctx context.Context, userID string, chatID in
 	if err = c.sessionsService.RemoveEverythingByUserID(ctx, userID); err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to remove everything upon /stop command")
 		msgTxt := "💥Failed to remove everything upon /stop command"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -51,5 +51,5 @@ func (c *TelegramBotCommands) Stop(ctx context.Context, userID string, chatID in
 
 	msgTxt := fmt.Sprintf("⏳Polling interval: %s\n🌍Regions: %s\n📍Cities: %s\n🌝DND start: %s UTC\n🌚DND end: %s UTC\n Search query: %s\n", pollingInterval.String(), msgRegions, msgCities, minutesAfterMidnightToDayTime(session.DNDStart), minutesAfterMidnightToDayTime(session.DNDEnd), URL)
 	msgTxt += "⏹️You have stopped the bot, all your data and settings were removed"
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 }

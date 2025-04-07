@@ -10,7 +10,7 @@ func (c *TelegramBotCommands) SetRegions(ctx context.Context, userID string, cha
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to update regions")
 		msgTxt := "💥Failed to update regions"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -20,6 +20,6 @@ func (c *TelegramBotCommands) SetRegions(ctx context.Context, userID string, cha
 	} else {
 		msgTxt = "✅Regions were set"
 	}
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 	c.ShowActiveFilters(ctx, userID, chatID)
 }

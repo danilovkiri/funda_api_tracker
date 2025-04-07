@@ -15,7 +15,7 @@ func (b *TelegramBot) isAuthorizedUser(userID string, chatID int64) bool {
 
 	b.log.Warn().Str("userID", userID).Int64("chatID", chatID).Msg("unauthorized user detected")
 	msgTxt := "🚫We are sorry, but you are not authorized to use this bot"
-	b.sendMessage(chatID, userID, msgTxt)
+	b.sendMessage(chatID, userID, msgTxt, false)
 	return false
 }
 
@@ -24,13 +24,13 @@ func (b *TelegramBot) canStart(ctx context.Context, userID string, chatID int64)
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to check whether session exists")
 		msgTxt := "💥We failed to check whether your session already exists"
-		b.sendMessage(chatID, userID, msgTxt)
+		b.sendMessage(chatID, userID, msgTxt, false)
 		return false
 	}
 
 	if sessionExists {
 		msgTxt := "🤷Your session already exists, there is nothing to /start"
-		b.sendMessage(chatID, userID, msgTxt)
+		b.sendMessage(chatID, userID, msgTxt, false)
 		return false
 	}
 
@@ -42,7 +42,7 @@ func (b *TelegramBot) canStop(ctx context.Context, userID string, chatID int64) 
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to check whether session exists")
 		msgTxt := "💥We failed to check whether your session already exists"
-		b.sendMessage(chatID, userID, msgTxt)
+		b.sendMessage(chatID, userID, msgTxt, false)
 		return false
 	}
 
@@ -51,7 +51,7 @@ func (b *TelegramBot) canStop(ctx context.Context, userID string, chatID int64) 
 	}
 
 	msgTxt := "🤷Your session does not exist, there is nothing to /stop"
-	b.sendMessage(chatID, userID, msgTxt)
+	b.sendMessage(chatID, userID, msgTxt, false)
 	return false
 }
 
@@ -60,7 +60,7 @@ func (b *TelegramBot) canDo(ctx context.Context, userID string, chatID int64) bo
 	if err != nil {
 		b.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to check whether session exists")
 		msgTxt := "💥We failed to check whether your session already exists"
-		b.sendMessage(chatID, userID, msgTxt)
+		b.sendMessage(chatID, userID, msgTxt, false)
 		return false
 	}
 
@@ -69,6 +69,6 @@ func (b *TelegramBot) canDo(ctx context.Context, userID string, chatID int64) bo
 	}
 
 	msgTxt := "🤷Your session does not exist, run /start to initialize your session"
-	b.sendMessage(chatID, userID, msgTxt)
+	b.sendMessage(chatID, userID, msgTxt, false)
 	return false
 }

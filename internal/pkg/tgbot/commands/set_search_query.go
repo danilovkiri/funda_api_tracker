@@ -10,19 +10,19 @@ func (c *TelegramBotCommands) SetSearchQuery(ctx context.Context, userID string,
 	if !validateURL(searchQuery) {
 		c.log.Warn().Str("userID", userID).Int64("chatID", chatID).Msg("failed to validate URL")
 		msgTxt := "⚠️The provided URL is invalid, copy URL directly from browser, the URL cannot target any domain other than funda.nl"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
 	if err := c.searchQueriesService.UpsertSearchQueryByUserID(ctx, userID, searchQuery); err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to update search query")
 		msgTxt := "💥Failed to update search query"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
 	msgTxt := "✅New search query was set"
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 }
 
 func validateURL(str string) bool {

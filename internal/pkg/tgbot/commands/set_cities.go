@@ -10,7 +10,7 @@ func (c *TelegramBotCommands) SetCities(ctx context.Context, userID string, chat
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to update cities")
 		msgTxt := "💥Failed to update cities"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -20,6 +20,6 @@ func (c *TelegramBotCommands) SetCities(ctx context.Context, userID string, chat
 	} else {
 		msgTxt = "✅Cities were set"
 	}
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 	c.ShowActiveFilters(ctx, userID, chatID)
 }

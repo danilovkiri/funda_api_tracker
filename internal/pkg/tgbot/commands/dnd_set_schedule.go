@@ -19,7 +19,7 @@ func (c *TelegramBotCommands) SetDNDSchedule(ctx context.Context, userID string,
 	if err := isValidTimeRange(schedule[0], schedule[1]); err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to validate DND schedule")
 		msgTxt := "💥Failed to validate DND schedule"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -27,7 +27,7 @@ func (c *TelegramBotCommands) SetDNDSchedule(ctx context.Context, userID string,
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to update DND schedule")
 		msgTxt := "💥Failed to update DND schedule"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -37,7 +37,7 @@ func (c *TelegramBotCommands) SetDNDSchedule(ctx context.Context, userID string,
 	} else {
 		msgTxt = fmt.Sprintf("✅DND schedule was set to %s UTC — %s UTC", schedule[0], schedule[1])
 	}
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 }
 
 func isValidTimeRange(start, end string) error {

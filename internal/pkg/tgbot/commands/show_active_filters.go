@@ -10,7 +10,7 @@ func (c *TelegramBotCommands) ShowActiveFilters(ctx context.Context, userID stri
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")
 		msgTxt := "💥Failed to get your session details"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -26,5 +26,5 @@ func (c *TelegramBotCommands) ShowActiveFilters(ctx context.Context, userID stri
 	}
 	msgTxt := "🌍Active regions: " + msgRegions +
 		"\n📍Active cities: " + msgCities
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 }

@@ -11,7 +11,7 @@ func (c *TelegramBotCommands) ShowNewListings(ctx context.Context, userID string
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")
 		msgTxt := "💥Failed to get your session details"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -19,7 +19,7 @@ func (c *TelegramBotCommands) ShowNewListings(ctx context.Context, userID string
 	if err != nil {
 		c.log.Error().Err(err).Msg("failed to get new listings")
 		msgTxt := "💥Failed to get new listings"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 	newListings = newListings.FilterByRegionsAndCities(session.Regions, session.Cities)
@@ -29,7 +29,7 @@ func (c *TelegramBotCommands) ShowNewListings(ctx context.Context, userID string
 	for idx := range newListings {
 		addMsgTxt := fmt.Sprintf(fmt.Sprintf("🏠[%.0f %s %s](%s)\n", newListings[idx].Offers.Price, newListings[idx].Offers.PriceCurrency, escapeMarkdownV2(newListings[idx].Name), escapeMarkdownV2(newListings[idx].URL)))
 		if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
-			c.sendMessage(chatID, userID, msgTxt)
+			c.sendMessage(chatID, userID, msgTxt, true)
 			msgTxt = ""
 		}
 		msgTxt += addMsgTxt
@@ -38,5 +38,5 @@ func (c *TelegramBotCommands) ShowNewListings(ctx context.Context, userID string
 		msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data; if you already did - this means that last sync retrieved zero new listings"
 	}
 
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, true)
 }

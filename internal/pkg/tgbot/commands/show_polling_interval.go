@@ -10,12 +10,12 @@ func (c *TelegramBotCommands) ShowPollingInterval(ctx context.Context, userID st
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")
 		msgTxt := "💥Failed to get your session details"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
 	pollingInterval := time.Duration(session.UpdateIntervalSeconds) * time.Second
 	msgTxt := "⏳Active polling interval: " + pollingInterval.String()
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 
 }

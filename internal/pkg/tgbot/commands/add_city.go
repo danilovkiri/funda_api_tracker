@@ -11,7 +11,7 @@ func (c *TelegramBotCommands) AddCity(ctx context.Context, userID string, chatID
 	if city == "" {
 		c.log.Warn().Str("userID", userID).Int64("chatID", chatID).Msg("failed to add empty city")
 		msgTxt := "⚠️Cannot add empty city"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -19,11 +19,11 @@ func (c *TelegramBotCommands) AddCity(ctx context.Context, userID string, chatID
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to add city")
 		msgTxt := "💥Failed to add city"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
 	msgTxt := fmt.Sprintf("✅City %s was added", city)
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 	c.ShowActiveFilters(ctx, userID, chatID)
 }

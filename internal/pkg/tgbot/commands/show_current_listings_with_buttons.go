@@ -11,7 +11,7 @@ func (c *TelegramBotCommands) ShowCurrentListingsWithButtons(ctx context.Context
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")
 		msgTxt := "💥Failed to get your session details"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -19,7 +19,7 @@ func (c *TelegramBotCommands) ShowCurrentListingsWithButtons(ctx context.Context
 	if err != nil {
 		c.log.Error().Err(err).Msg("failed to get all listings")
 		msgTxt := "💥Failed to get all listings"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 	allListings = allListings.FilterByRegionsAndCities(session.Regions, session.Cities)
@@ -27,13 +27,13 @@ func (c *TelegramBotCommands) ShowCurrentListingsWithButtons(ctx context.Context
 
 	if len(allListings) == 0 {
 		msgTxt := "🤷Nothing to show, list of favorites is empty"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 	}
 
 	for idx := range allListings {
 		msgTxt := fmt.Sprintf(fmt.Sprintf("🏠[%.0f %s %s](%s)\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, escapeMarkdownV2(allListings[idx].Name), escapeMarkdownV2(allListings[idx].URL)))
 		rows := [][]tgbotapi.InlineKeyboardButton{tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("️➕Save", allListings[idx].UUID))}
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
-		c.sendMessageWithKeyboard(chatID, userID, msgTxt, &keyboard)
+		c.sendMessageWithKeyboard(chatID, userID, msgTxt, &keyboard, true)
 	}
 }

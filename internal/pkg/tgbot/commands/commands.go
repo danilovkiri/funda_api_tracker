@@ -29,21 +29,25 @@ func NewTelegramBotCommands(
 	}
 }
 
-func (c *TelegramBotCommands) sendMessage(chatID int64, userID, message string) {
+func (c *TelegramBotCommands) sendMessage(chatID int64, userID, message string, md2 bool) {
 	msg := tgbotapi.NewMessage(chatID, message)
 	msg.DisableWebPagePreview = true
-	msg.ParseMode = "MarkdownV2"
+	if md2 {
+		msg.ParseMode = "MarkdownV2"
+	}
 	_, err := c.bot.Send(msg)
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send message to")
 	}
 }
 
-func (c *TelegramBotCommands) sendMessageWithKeyboard(chatID int64, userID, message string, keyboard *tgbotapi.InlineKeyboardMarkup) {
+func (c *TelegramBotCommands) sendMessageWithKeyboard(chatID int64, userID, message string, keyboard *tgbotapi.InlineKeyboardMarkup, md2 bool) {
 	msg := tgbotapi.NewMessage(chatID, message)
 	msg.ReplyMarkup = keyboard
 	msg.DisableWebPagePreview = true
-	msg.ParseMode = "MarkdownV2"
+	if md2 {
+		msg.ParseMode = "MarkdownV2"
+	}
 	_, err := c.bot.Send(msg)
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to send message with keyboard to")

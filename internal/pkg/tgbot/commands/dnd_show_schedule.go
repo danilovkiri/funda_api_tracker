@@ -10,7 +10,7 @@ func (c *TelegramBotCommands) ShowDNDSchedule(ctx context.Context, userID string
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")
 		msgTxt := "💥Failed to get your session details"
-		c.sendMessage(chatID, userID, msgTxt)
+		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
 
@@ -25,7 +25,7 @@ func (c *TelegramBotCommands) ShowDNDSchedule(ctx context.Context, userID string
 		msgTxt = "⚠️DND schedule is not set, run /dnd_set_schedule to set it"
 	}
 
-	c.sendMessage(chatID, userID, msgTxt)
+	c.sendMessage(chatID, userID, msgTxt, false)
 }
 
 func minutesAfterMidnightToDayTime(minutes int) string {
