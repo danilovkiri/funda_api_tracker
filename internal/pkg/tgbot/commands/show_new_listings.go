@@ -37,6 +37,7 @@ func (c *TelegramBotCommands) ShowNewListings(ctx context.Context, userID string
 	if msgTxt == "" {
 		msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data; if you already did - this means that last sync retrieved zero new listings"
 		c.sendMessage(chatID, userID, msgTxt, false)
+		return
 	}
 
 	c.sendMessage(chatID, userID, msgTxt, true)

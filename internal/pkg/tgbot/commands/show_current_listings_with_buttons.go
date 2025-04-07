@@ -28,6 +28,7 @@ func (c *TelegramBotCommands) ShowCurrentListingsWithButtons(ctx context.Context
 	if len(allListings) == 0 {
 		msgTxt := "🤷Nothing to show, list of favorites is empty"
 		c.sendMessage(chatID, userID, msgTxt, false)
+		return
 	}
 
 	for idx := range allListings {

@@ -38,6 +38,7 @@ func (c *TelegramBotCommands) ShowCurrentListings(ctx context.Context, userID st
 	if msgTxt == "" {
 		msgTxt = "🤷Nothing to show, call /update_now or /run to start collecting data"
 		c.sendMessage(chatID, userID, msgTxt, false)
+		return
 	}
 
 	c.sendMessage(chatID, userID, msgTxt, true)
