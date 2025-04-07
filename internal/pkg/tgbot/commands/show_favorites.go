@@ -27,6 +27,7 @@ func (c *TelegramBotCommands) ShowFavorites(ctx context.Context, userID string, 
 	}
 	if msgTxt == "" {
 		msgTxt = "🤷Nothing to show, you need to add a favorite first"
+		c.sendMessage(chatID, userID, msgTxt, false)
 	}
 
 	c.sendMessage(chatID, userID, msgTxt, true)
