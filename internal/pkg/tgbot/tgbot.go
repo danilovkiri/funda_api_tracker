@@ -6,12 +6,14 @@ import (
 	"fundaNotifier/internal/domain/listings"
 	"fundaNotifier/internal/domain/search_queries"
 	"fundaNotifier/internal/domain/sessions"
+	"fundaNotifier/internal/pkg/geo"
 	"fundaNotifier/internal/pkg/tgbot/commands"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/rs/zerolog"
 	"strings"
 	"sync"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/rs/zerolog"
 )
 
 func defineCommands() tgbotapi.SetMyCommandsConfig {
@@ -32,11 +34,13 @@ func defineCommands() tgbotapi.SetMyCommandsConfig {
 		{Command: "show_current_listings", Description: "Show all currently stored listings"},
 		{Command: "tap_current_listings", Description: "Show all currently stored listings with an option to save any of them as favorites"},
 		{Command: "show_new_listings", Description: "Show all newly added listings"},
+		{Command: "tap_new_listings", Description: "Show all newly added listings with an option to save any of them as favorites"},
 		{Command: "show_favorites", Description: "Show all favorite listings"},
 		{Command: "dnd_set_schedule", Description: "Set DND interval in UTC as start and end HH:MM (e.g. `/set_dnd_period 23:00,08:00`), DND means that API polling will be paused during the set interval if DND is turned on"},
 		{Command: "dnd_show_schedule", Description: "Show DND schedule"},
 		{Command: "dnd_activate", Description: "Turn on DND"},
 		{Command: "dnd_deactivate", Description: "Turn off DND"},
+		{Command: "show_locations", Description: "Show a prompt with a list of major cities by their corresponding region"},
 		{Command: "help", Description: "Show help"},
 	}
 	return tgbotapi.NewSetMyCommands(registeredCommands...)
@@ -50,6 +54,7 @@ type TelegramBot struct {
 	listingsService      *listings.Service
 	sessionsService      *sessions.Service
 	searchQueriesService *search_queries.Service
+	cityData             *geo.CityData
 }
 
 func NewTelegramBot(
@@ -77,7 +82,7 @@ func NewTelegramBot(
 		cfg:                  cfg,
 		log:                  log,
 		bot:                  bot,
-		commands:             commands.NewTelegramBotCommands(log, bot, listingsService, sessionsService, searchQueriesService),
+		commands:             commands.NewTelegramBotCommands(log, bot, listingsService, sessionsService, searchQueriesService, geo.NewCityData()),
 		listingsService:      listingsService,
 		sessionsService:      sessionsService,
 		searchQueriesService: searchQueriesService,
@@ -251,11 +256,15 @@ func (b *TelegramBot) updateCommandHandler(ctx context.Context, update tgbotapi.
 
 		case "show_current_listings":
 			b.commands.ShowCurrentListings(ctx, user.UserName, chatID)
+
 		case "tap_current_listings":
-			b.commands.ShowCurrentListingsWithButtons(ctx, user.UserName, chatID)
+			b.commands.TapCurrentListings(ctx, user.UserName, chatID)
 
 		case "show_new_listings":
 			b.commands.ShowNewListings(ctx, user.UserName, chatID)
+
+		case "tap_new_listings":
+			b.commands.TapNewListings(ctx, user.UserName, chatID)
 
 		case "show_favorites":
 			b.commands.ShowFavorites(ctx, user.UserName, chatID)
@@ -274,6 +283,9 @@ func (b *TelegramBot) updateCommandHandler(ctx context.Context, update tgbotapi.
 
 		case "dnd_deactivate":
 			b.commands.DeactivateDND(ctx, user.UserName, chatID)
+
+		case "show_locations":
+			b.commands.ShowLocations(ctx, user.UserName, chatID)
 
 		case "help":
 			b.commands.Help(ctx, user.UserName, chatID)

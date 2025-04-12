@@ -3,10 +3,11 @@ package commands
 import (
 	"context"
 	"fmt"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (c *TelegramBotCommands) ShowCurrentListingsWithButtons(ctx context.Context, userID string, chatID int64) {
+func (c *TelegramBotCommands) TapCurrentListings(ctx context.Context, userID string, chatID int64) {
 	session, err := c.sessionsService.GetSessionByUserID(ctx, userID)
 	if err != nil {
 		c.log.Error().Err(err).Str("userID", userID).Int64("chatID", chatID).Msg("failed to get session details")

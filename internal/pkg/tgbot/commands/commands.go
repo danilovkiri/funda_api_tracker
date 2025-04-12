@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"fundaNotifier/internal/pkg/geo"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/rs/zerolog"
 )
@@ -11,6 +13,7 @@ type TelegramBotCommands struct {
 	listingsService      ListingsService
 	sessionsService      SessionsService
 	searchQueriesService SearchQueriesService
+	cityData             *geo.CityData
 }
 
 func NewTelegramBotCommands(
@@ -19,6 +22,7 @@ func NewTelegramBotCommands(
 	listingsService ListingsService,
 	sessionsService SessionsService,
 	searchQueriesService SearchQueriesService,
+	cityData *geo.CityData,
 ) *TelegramBotCommands {
 	return &TelegramBotCommands{
 		log:                  log,
@@ -26,6 +30,7 @@ func NewTelegramBotCommands(
 		listingsService:      listingsService,
 		sessionsService:      sessionsService,
 		searchQueriesService: searchQueriesService,
+		cityData:             cityData,
 	}
 }
 

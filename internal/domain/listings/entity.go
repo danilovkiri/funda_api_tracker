@@ -1,10 +1,11 @@
 package listings
 
 import (
-	"github.com/google/uuid"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type Listing struct {
@@ -79,6 +80,8 @@ func (l *Listings) FilterByRegionsAndCities(regions, cities []string) Listings {
 	filteredListings := make(Listings, 0, len(*l))
 
 	for idx := range *l {
+		(*l)[idx].Address.AddressRegion = strings.TrimPrefix((*l)[idx].Address.AddressRegion, "'")
+		(*l)[idx].Address.AddressLocality = strings.TrimPrefix((*l)[idx].Address.AddressLocality, "'")
 		if len(regions) == 0 && len(cities) == 0 {
 			filteredListings = append(filteredListings, (*l)[idx])
 			continue

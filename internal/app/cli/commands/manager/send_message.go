@@ -4,6 +4,7 @@ import (
 	"context"
 	"fundaNotifier/internal/domain/sessions"
 	"fundaNotifier/internal/pkg/config"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"

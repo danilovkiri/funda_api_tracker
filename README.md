@@ -31,7 +31,8 @@ The session stores user-defined parameters:
 3. Regions and cities used for listing filtering at the bot-level. Regions can be set via `/set_regions` followed by
    a comma-separated list of region names (case-insensitive) or via `/add_region` followed by a single region name. The
    same applies to city names via `/set_cities` and `/add_city`. These filters are applied only when sending data to user,
-   not when collecting or storing data, thus can be changed any moment.
+   not when collecting or storing data, thus can be changed any moment. To show the list of regions with corresponding
+   top 5 cities run `/show_locations`.
 4. DND mode state — a boolean flag which either enables or disables DND mode, which pauses any scheduled API polling
    runs. Can be turned on and off via `/dnd_activate` and `/dnd_deactivate`, respectfully. DND schedule can be set via
    `/dnd_set_schedule` followed by two comma-separated values, defining time in a format of HH:MM **in UTC**
@@ -54,7 +55,7 @@ can retrieve either all listings from DB via `/show_current_listings` or only ne
 ### Favorites
 
 User can add a listing to a list of favorites by clicking the button provided under each listing when invoking
-`/show_current_listings` or `/show_new_listings`. To access a list of favorites one must use `/show_favorites` command.
+`/tap_current_listings` or `/tap_new_listings`. To access a list of favorites one must use `/show_favorites` command.
 The list cannot be edited or deleted except when calling `/stop`. You can add a listing to favorites only when it is
 present in the DB, which means that you cannot add a listing to favorites if it was removed from storage.
 

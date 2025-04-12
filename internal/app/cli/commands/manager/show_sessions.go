@@ -3,12 +3,13 @@ package manager
 import (
 	"context"
 	"fmt"
-	"github.com/olekukonko/tablewriter"
-	"github.com/rs/zerolog"
-	"github.com/urfave/cli/v2"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/olekukonko/tablewriter"
+	"github.com/rs/zerolog"
+	"github.com/urfave/cli/v2"
 )
 
 type ShowSessionsCommand struct {
