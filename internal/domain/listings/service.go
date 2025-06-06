@@ -10,6 +10,7 @@ import (
 	"fundaNotifier/internal/domain"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -251,6 +252,9 @@ func (s *Service) GetListing(ctx context.Context, URL string) (*Listing, error) 
 		htmlContent []byte
 		doc         *goquery.Document
 	)
+
+	// хитрые жопы upd 6Jun2025
+	URL = strings.Replace(URL, "/en/en/", "/en/", 1)
 
 	htmlContent, err = s.fundaAPIClient.GetHTMLContent(ctx, URL)
 	if err != nil {
