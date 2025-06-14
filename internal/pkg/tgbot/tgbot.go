@@ -115,13 +115,17 @@ func (b *TelegramBot) Begin(ctx context.Context, wg *sync.WaitGroup) error {
 	for {
 		select {
 		case update := <-updates:
-			switch {
-			case update.CallbackQuery != nil:
-				b.updateCallbackHandler(ctx, update)
-			case update.Message.Command() != "":
-				b.updateCommandHandler(ctx, update)
-			default:
-				break
+			if update.CallbackQuery != nil || update.Message.IsCommand() {
+				switch {
+				case update.CallbackQuery != nil:
+					b.updateCallbackHandler(ctx, update)
+				case update.Message.Command() != "":
+					b.updateCommandHandler(ctx, update)
+				default:
+					break
+				}
+			} else {
+				continue
 			}
 		case <-ctx.Done():
 			b.log.Info().Msg("attempting to gracefully shutdown telegram bot updates handling")
