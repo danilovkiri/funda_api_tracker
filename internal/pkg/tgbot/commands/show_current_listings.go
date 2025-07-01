@@ -28,7 +28,7 @@ func (c *TelegramBotCommands) ShowCurrentListings(ctx context.Context, userID st
 
 	var msgTxt string
 	for idx := range allListings {
-		addMsgTxt := fmt.Sprintf(fmt.Sprintf("🏠[%.0f %s %s](%s)\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, escapeMarkdownV2(allListings[idx].Name), escapeMarkdownV2(allListings[idx].URL)))
+		addMsgTxt := fmt.Sprintf(fmt.Sprintf("🏠[%.0f %s %s](%s)\n%s, %s, %s\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, escapeMarkdownV2(allListings[idx].Name), escapeMarkdownV2(allListings[idx].URL), escapeMarkdownV2(allListings[idx].Address.AddressRegion), escapeMarkdownV2(allListings[idx].Address.AddressLocality), escapeMarkdownV2(allListings[idx].Address.StreetAddress)))
 		if utf8.RuneCountInString(msgTxt+addMsgTxt) > messageMaxCharLen {
 			c.sendMessage(chatID, userID, msgTxt, true)
 			msgTxt = ""
