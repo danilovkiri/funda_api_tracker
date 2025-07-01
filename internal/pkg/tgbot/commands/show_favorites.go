@@ -14,7 +14,7 @@ func (c *TelegramBotCommands) ShowFavorites(ctx context.Context, userID string, 
 		c.sendMessage(chatID, userID, msgTxt, false)
 		return
 	}
-	favorites.SortByPriceDesc()
+	favorites.Sort()
 
 	var msgTxt string
 	for idx := range favorites {

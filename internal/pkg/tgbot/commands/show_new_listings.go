@@ -24,7 +24,7 @@ func (c *TelegramBotCommands) ShowNewListings(ctx context.Context, userID string
 		return
 	}
 	newListings = newListings.FilterByRegionsAndCities(session.Regions, session.Cities)
-	newListings.SortByPriceDesc()
+	newListings.Sort()
 
 	var msgTxt string
 	for idx := range newListings {

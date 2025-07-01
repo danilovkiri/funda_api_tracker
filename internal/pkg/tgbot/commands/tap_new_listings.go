@@ -25,7 +25,7 @@ func (c *TelegramBotCommands) TapNewListings(ctx context.Context, userID string,
 		return
 	}
 	newListings = newListings.FilterByRegionsAndCities(session.Regions, session.Cities)
-	newListings.SortByPriceDesc()
+	newListings.Sort()
 
 	if len(newListings) == 0 {
 		msgTxt := "🤷Nothing to show, call /update_now or /run to start collecting data; if you already did - this means that last sync retrieved zero new listings"

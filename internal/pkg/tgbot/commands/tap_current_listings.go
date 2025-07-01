@@ -25,7 +25,7 @@ func (c *TelegramBotCommands) TapCurrentListings(ctx context.Context, userID str
 		return
 	}
 	allListings = allListings.FilterByRegionsAndCities(session.Regions, session.Cities)
-	allListings.SortByPriceDesc()
+	allListings.Sort()
 
 	if len(allListings) == 0 {
 		msgTxt := "🤷Nothing to show, list of favorites is empty"

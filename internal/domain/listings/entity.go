@@ -128,12 +128,19 @@ func (l *Listings) CompareAndGetAddedListings(currentListings Listings) Listings
 	return addedListings
 }
 
-func (l *Listings) SortByPriceDesc() {
+func (l *Listings) Sort() {
 	if l == nil || len(*l) == 0 {
 		return
 	}
 	sort.SliceStable(*l, func(i, j int) bool {
-		return (*l)[i].Offers.Price > (*l)[j].Offers.Price
+		switch {
+		case (*l)[i].CreatedAt.After((*l)[j].CreatedAt):
+			return true
+		case (*l)[i].CreatedAt.Before((*l)[j].CreatedAt):
+			return false
+		default:
+			return (*l)[i].Offers.Price > (*l)[j].Offers.Price
+		}
 	})
 }
 
