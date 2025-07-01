@@ -34,7 +34,7 @@ func (c *TelegramBotCommands) TapCurrentListings(ctx context.Context, userID str
 	}
 
 	for idx := range allListings {
-		msgTxt := fmt.Sprintf(fmt.Sprintf("🏠[%.0f %s %s](%s)\n%s, %s, %s\n%s", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, escapeMarkdownV2(allListings[idx].Name), escapeMarkdownV2(allListings[idx].URL), escapeMarkdownV2(allListings[idx].Address.AddressRegion), escapeMarkdownV2(allListings[idx].Address.AddressLocality), escapeMarkdownV2(allListings[idx].Address.StreetAddress), escapeMarkdownV2(allListings[idx].CreatedAt.Format(time.RFC850))))
+		msgTxt := fmt.Sprintf(fmt.Sprintf("🏠[%.0f %s %s](%s)\n%s, %s, %s\n%s\n", allListings[idx].Offers.Price, allListings[idx].Offers.PriceCurrency, escapeMarkdownV2(allListings[idx].Name), escapeMarkdownV2(allListings[idx].URL), escapeMarkdownV2(allListings[idx].Address.AddressRegion), escapeMarkdownV2(allListings[idx].Address.AddressLocality), escapeMarkdownV2(allListings[idx].Address.StreetAddress), escapeMarkdownV2(allListings[idx].CreatedAt.Format(time.RFC850))))
 		rows := [][]tgbotapi.InlineKeyboardButton{tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("️➕Save", allListings[idx].UUID))}
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
 		c.sendMessageWithKeyboard(chatID, userID, msgTxt, &keyboard, true)
