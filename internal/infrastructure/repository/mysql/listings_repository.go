@@ -66,7 +66,7 @@ func (r *ListingsRepository) GetListingByUUID(ctx context.Context, UUID string) 
 	defer cancel()
 
 	var entry listings.Listing
-	err := r.db.QueryRowContext(ctx, "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, uuid FROM listings WHERE uuid = ?;", UUID).Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew, &entry.UUID)
+	err := r.db.QueryRowContext(ctx, "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, created_at, uuid FROM listings WHERE uuid = ?;", UUID).Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew, &entry.CreatedAt, &entry.UUID)
 	if err != nil {
 		r.log.Error().Err(err).Str("method", name).Msg("failed to execute query in")
 		return nil, fmt.Errorf("failed to execute query in %s: %w", name, err)
@@ -82,9 +82,9 @@ func (r *ListingsRepository) MGetListingByUserID(ctx context.Context, userID str
 
 	var query string
 	if showOnlyNew {
-		query = "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, uuid FROM listings WHERE user_id = ? AND is_new IS TRUE;"
+		query = "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, created_at, uuid FROM listings WHERE user_id = ? AND is_new IS TRUE;"
 	} else {
-		query = "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, uuid FROM listings WHERE user_id = ?;"
+		query = "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, created_at, uuid FROM listings WHERE user_id = ?;"
 	}
 
 	result := make(listings.Listings, 0, defaultCapacity)
@@ -102,7 +102,7 @@ func (r *ListingsRepository) MGetListingByUserID(ctx context.Context, userID str
 	// iterate over rows
 	for rows.Next() {
 		var entry listings.Listing
-		if err = rows.Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew, &entry.UUID); err != nil {
+		if err = rows.Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew, &entry.CreatedAt, &entry.UUID); err != nil {
 			r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
 			return nil, fmt.Errorf("failed to scan a row in %s: %w", name, err)
 		}
@@ -122,7 +122,7 @@ func (r *ListingsRepository) MGetListingByUserIDTx(ctx context.Context, tx domai
 	defer cancel()
 
 	result := make(listings.Listings, 0, defaultCapacity)
-	rows, err := tx.QueryContext(ctx, "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, uuid FROM listings WHERE user_id = ?;", userID)
+	rows, err := tx.QueryContext(ctx, "SELECT user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, created_at, uuid FROM listings WHERE user_id = ?;", userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			r.log.Warn().Err(err).Str("method", name).Msg("no data was found")
@@ -136,7 +136,7 @@ func (r *ListingsRepository) MGetListingByUserIDTx(ctx context.Context, tx domai
 	// iterate over rows
 	for rows.Next() {
 		var entry listings.Listing
-		if err = rows.Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew, &entry.UUID); err != nil {
+		if err = rows.Scan(&entry.UserID, &entry.Name, &entry.URL, &entry.Description, &entry.Address.StreetAddress, &entry.Address.AddressLocality, &entry.Address.AddressRegion, &entry.Offers.PriceCurrency, &entry.Offers.Price, &entry.IsNew, &entry.CreatedAt, &entry.UUID); err != nil {
 			r.log.Error().Err(err).Str("method", name).Msg("failed to scan a row in")
 			return nil, fmt.Errorf("failed to scan a row in %s: %w", name, err)
 		}
@@ -155,7 +155,7 @@ func (r *ListingsRepository) MInsertListingTx(ctx context.Context, tx domain.Tx,
 		return nil
 	}
 
-	const fieldsLimit = 3275 // max is 32766 divided by 10
+	const fieldsLimit = 2731 // max is 32766 divided by 12
 	if len(listings) <= fieldsLimit {
 		return r.mInsertListingTx(ctx, tx, listings)
 	}
@@ -179,15 +179,16 @@ func (r *ListingsRepository) MInsertListingTx(ctx context.Context, tx domain.Tx,
 func (r *ListingsRepository) mInsertListingTx(ctx context.Context, tx domain.Tx, listings listings.Listings) error {
 	const (
 		name     = "ListingsRepository.mInsertListingTx"
-		fieldsNb = 11
+		fieldsNb = 12
 	)
 	ctx, cancel := context.WithTimeout(ctx, time.Second*defaultTimeoutSeconds)
 	defer cancel()
 
 	// build query
+	timestamp := time.Now().UTC()
 	b := strings.Builder{}
 	params := make([]interface{}, 0, len(listings)*fieldsNb)
-	b.WriteString("INSERT INTO listings (user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, uuid) VALUES ")
+	b.WriteString("INSERT INTO listings (user_id, name, url, description, address_street, address_locality, address_region, currency, price, is_new, created_at, uuid) VALUES ")
 	counter := 0
 	for idx := range listings {
 		if counter > 0 {
@@ -206,6 +207,7 @@ func (r *ListingsRepository) mInsertListingTx(ctx context.Context, tx domain.Tx,
 			listings[idx].Offers.PriceCurrency,
 			listings[idx].Offers.Price,
 			true,
+			timestamp,
 			listings[idx].UUID,
 		)
 		counter++

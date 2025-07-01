@@ -4,23 +4,25 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 type Listing struct {
-	UUID        string   `json:"UUID"`
-	UserID      string   `json:"userId"`
-	Context     any      `json:"@context"`
-	Type        []string `json:"@type"`
-	Name        string   `json:"name"`
-	URL         string   `json:"url"`
-	Description string   `json:"description"`
-	Address     Address  `json:"address"`
-	Offers      Offers   `json:"offers"`
-	Image       string   `json:"image"`
-	Photo       []Photo  `json:"photo"`
-	IsNew       bool     `json:"isNew"`
+	UUID        string    `json:"UUID"`
+	UserID      string    `json:"userId"`
+	Context     any       `json:"@context"`
+	Type        []string  `json:"@type"`
+	Name        string    `json:"name"`
+	URL         string    `json:"url"`
+	Description string    `json:"description"`
+	Address     Address   `json:"address"`
+	Offers      Offers    `json:"offers"`
+	Image       string    `json:"image"`
+	Photo       []Photo   `json:"photo"`
+	IsNew       bool      `json:"isNew"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type Offers struct {
